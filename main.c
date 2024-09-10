@@ -176,7 +176,7 @@ Img dump_image_dn(const char *fp, Mat pixel_values)
     // normalize the image (if not normalized)
     normalize_pixels(&pixel_values); 
 
-    for (int i = 0; i < img.height; ++i)
+    for (int i = 0; i < img.height * img.width; ++i)
     {
         uint32_t val = (uint32_t)(pixel_values.items[i] * 255.0f);
         img.pixels[i] = (img.pixels[i] & 0xFF000000) | val << (8 * 2) | val << (8 * 1) | val << (8 * 0);
@@ -191,12 +191,12 @@ Img dump_image_dn(const char *fp, Mat pixel_values)
     return img;
 }
 
-void dump_image(const char *fp, uint32_t *pixel_values, int width, int height)
+void dump_image(const char *fp, Img img)
 {       
     // Dumps the normalized images i.e with float values from 0.0 to 1.0 to a file path 
-    assert(pixel_values != NULL);
+    assert(img.pixels != NULL);
 
-    if (!stbi_write_jpg(fp, width, height, 4, pixel_values, 100))  
+    if (!stbi_write_jpg(fp, img.width, img.height, 4, img.pixels, 100))  
     {
         fprintf(stderr, "ERROR: Could not write the image file %s\n", fp);
         exit(EXIT_FAILURE);
@@ -314,13 +314,17 @@ int main(int argc, char *argv[])
 
     Mat luminance = get_lum(img);
     dump_image_dn("luminance.jpg", luminance);
+    analyse_min_and_max("Luminance", &luminance);
 
     Mat grad = sobel(luminance);
     dump_image_dn("gradient.jpg", grad);
+    analyse_min_and_max("Gradient", &grad);
     
     Mat energy_map = energy(grad);
     dump_image_dn("energy.jpg", energy_map);
-    /*
+    analyse_min_and_max("Energy", &energy_map);
+    
+
 #if 0
     // Find the lowest energy column from the bottom most row 
     int minCol = 0;
@@ -342,17 +346,17 @@ int main(int argc, char *argv[])
             for (int dx = -1; dx <= 1; ++dx)
             {
                 int x = minCol + dx;    // find the appropriate col
-                if (0 <= x && x < width && energy_map[y * width + x] < energy_map[y * width + minCol])
-                {
+                // if (0 <= x && x < width && energy_map[y * width + x] < energy_map[y * width + minCol])
+                if (0 <= x && x < width && mat_at(energy_map, y, x) < mat_at(energy_map, y, minCol))
+                {   
                     minCol = x;
                 }
             }
             pixels[y * width + minCol] = RED;
         }
     }
-    */
 
-    dump_image("image_with_seam.jpg", pixels, width, height);
+    dump_image("image_with_seam.jpg", img);
     
     stbi_image_free(pixels);
     mat_free(&luminance);
