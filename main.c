@@ -3,14 +3,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <stdbool.h>
 #include <float.h>
 #include <math.h>
 
-#define STB_IMAGE_IMPLEMENTATION
 #include "external/stb_image.h"
-
-#define STB_IMAGE_WRITE_IMPLEMENTATION 
 #include "external/stb_image_write.h"
+#include "external/nob.h"
 
 
 /* 
@@ -42,8 +41,8 @@ typedef struct
 }Img;
 
 
-#define mat_at(mat, i, j) ((mat).items[(mat).width * i + j])
-#define img_at(img, i, j) ((img).pixels[(img).width * i + j])
+#define mat_at(mat, i, j) ((mat).items[(mat).width * (i) + (j)])
+#define img_at(img, i, j) ((img).pixels[(img).width * (i) + (j)])
 
 Mat mat_alloc(int width, int height)
 {
@@ -118,23 +117,20 @@ float rgb_to_lum(uint32_t rgb)
     return (0.2126 * r + 0.7152 * g + 0.0722 * b);
 }
 
-// float *get_lum(uint32_t* pixels, int width, int height)
-Mat get_lum(Img img)
+void luminance(Img img, Mat lum)
 {   
-    Mat luminance = mat_alloc(img.width, img.height);
-    assert(luminance.items != NULL);
+    assert(lum.items != NULL);
+    assert(lum.width == img.width);
+    assert(lum.height == img.height);
 
     for (int y = 0; y < img.height; ++y)
     {
         for (int x = 0; x < img.width; ++x) {
-            // luminance[i] = rgb_to_lum(pixels[i]);
-            mat_at(luminance, y, x) = rgb_to_lum(img_at(img, y, x));
+            mat_at(lum, y, x) = rgb_to_lum(img_at(img, y, x));
         }
     }
-    return luminance;
 }
 
-// void min_and_max(float *values, int width, int height, float *min, float *max)
 void min_and_max(Mat *values, float *min, float *max)
 {
     *min = FLT_MAX;
@@ -146,7 +142,6 @@ void min_and_max(Mat *values, float *min, float *max)
     }
 }
 
-// void analyse_min_and_max(const char *prompt, float *values, int width, int height)
 void analyse_min_and_max(const char *prompt, Mat *values)
 {   
     assert(values != NULL);
@@ -165,38 +160,43 @@ void normalize_pixels(Mat *values)
     }
 }
 
-// uint32_t *dump_image_dn(const char *fp, float *pixel_values, int width, int height)
-Img dump_image_dn(const char *fp, Mat pixel_values)
-{       
-    // Dumps the normalized images i.e with float values from 0.0 to 1.0 to a file path 
-    // uint32_t *pixels = (uint32_t *)malloc(sizeof(*pixels) * width * height);
-    // assert(pixels != NULL);
-    Img img = img_alloc(pixel_values.width, pixel_values.height);
+bool dump_mat(const char *fp, Mat mat)
+{
+    uint32_t *pixels = NULL;
+    bool result = true;
 
-    // normalize the image (if not normalized)
-    normalize_pixels(&pixel_values); 
+    pixels = malloc(sizeof(*pixels) * mat.width * mat.height);
+    assert(pixels != NULL);
 
-    for (int i = 0; i < img.height * img.width; ++i)
+    normalize_pixels(&mat);
+    for (int y = 0; y < mat.height; ++y) 
     {
-        uint32_t val = (uint32_t)(pixel_values.items[i] * 255.0f);
-        img.pixels[i] = (img.pixels[i] & 0xFF000000) | val << (8 * 2) | val << (8 * 1) | val << (8 * 0);
+        for (int x = 0; x < mat.width; ++x) 
+        {
+            int i = y * mat.width + x;
+            uint32_t value = 255 * mat_at(mat, y, x);
+            pixels[i] = 0xFF000000 | (value << (8*2)) | (value << (8*1)) | (value << (8*0));
+        }
     }
 
-    if (!stbi_write_jpg(fp, img.width, img.height, 4, img.pixels, 100))  
+    if (!stbi_write_png(fp, mat.width, mat.height, 4, pixels, mat.width * sizeof(*pixels))) 
     {
-        fprintf(stderr, "ERROR: Could not write the image file %s\n", fp);
-        exit(EXIT_FAILURE);
+        fprintf(stderr, "ERROR: could not save file %s", fp);
+        nob_return_defer(false);
     }
     else fprintf(stderr, "OK: Saved the image file at %s\n", fp);
-    return img;
+
+defer:
+    free(pixels);
+    return result;
 }
 
-void dump_image(const char *fp, Img img)
+void dump_img(const char *fp, Img img)
 {       
     // Dumps the normalized images i.e with float values from 0.0 to 1.0 to a file path 
     assert(img.pixels != NULL);
 
-    if (!stbi_write_jpg(fp, img.width, img.height, 4, img.pixels, 100))  
+    if (!stbi_write_png(fp, img.width, img.height, 4, img.pixels, img.stride * sizeof(*img.pixels)))  
     {
         fprintf(stderr, "ERROR: Could not write the image file %s\n", fp);
         exit(EXIT_FAILURE);
@@ -204,12 +204,14 @@ void dump_image(const char *fp, Img img)
     else fprintf(stderr, "OK: Saved the image file at %s\n", fp);
 }
 
-
-
-Mat sobel(Mat luminance) 
+void sobel(Mat lum, Mat grad) 
 {       
     // Convolutional kernel for SOBEL filter 
     // REFR: https://en.wikipedia.org/wiki/Sobel_operator
+    assert(lum.items != NULL);
+    assert(lum.width == grad.width);
+    assert(lum.height == grad.height);
+
     static float gx[3][3] = {
         {1, 0, -1},
         {2, 0, -2},
@@ -223,11 +225,9 @@ Mat sobel(Mat luminance)
     };
 
     // gradient or edge mapping of image
-    int width = luminance.width;
-    int height = luminance.height;
+    int width = lum.width;
+    int height = lum.height;
     
-    Mat grad = mat_alloc(width, height);
-
     // Convolving the kernel and the image
     for (int cy = 0; cy < height; ++cy)
     {
@@ -242,24 +242,23 @@ Mat sobel(Mat luminance)
                     int x = cx + kx;
                     int y = cy + ky;
                     // ensure x & y stay in bounds of image dimensions
-                    float l = (0 <= x && x < width && 0 <= y && y < width) ? mat_at(luminance, y, x) : 0.0f;
+                    float l = (0 <= x && x < width && 0 <= y && y < height) ? mat_at(lum, y, x) : 0.0f;
                     // kx and ky start from -1 so offset by 1
                     sx += gx[ky + 1][kx + 1] * l;
                     sy += gy[ky + 1][kx + 1] * l;
                 }
             }
             // magnitude of the gradient 
-            // grad[cy * width + cx] = sqrtf(sx * sx + sy * sy);
             mat_at(grad, cy, cx) = sqrtf(sx * sx + sy * sy);
         }
     }
-    return grad;
-}
+}   
 
-// float *energy(float *grad, int width, int height)
-Mat energy(Mat grad)
+void energy(Mat grad, Mat energy)
 {   
-    Mat energy = mat_alloc(grad.width, grad.height);
+    assert(grad.items != NULL);
+    assert(grad.width == energy.width);
+    assert(grad.height == energy.height);
 
     int width = energy.width;
     int height = energy.height;
@@ -267,7 +266,6 @@ Mat energy(Mat grad)
     for (int x = 0; x < width; ++x) 
     {   
         // Copy the first row as it is, as there's no row above to calculate the energy
-        // energy[0 * width + x] = grad[0 * width + x];
         mat_at(energy, 0, x) = mat_at(grad, 0, x);
     }
     
@@ -281,19 +279,84 @@ Mat energy(Mat grad)
             {
                 int x = cx + dx;
                 // float value = (0 <= x && x < width) ? energy[(cy - 1) * width + x] : 0.0f;
-                float value = (0 <= x && x < width) ? mat_at(energy, (cy - 1), x) : 0.0f;
+                float value = (0 <= x && x < width) ? mat_at(energy, (cy - 1), x) : FLT_MAX;
+                // Why FLT_MAX?: to not make it seam as minimum energy seam
                 if (value < min)        min = value;
             }
             // energy[cy * width + cx] = grad[cy * width + cx] + min;
             mat_at(energy, cy, cx) = mat_at(grad, cy, cx) + min;
         }
     }
-    return energy;
 }
 
-int main(int argc, char *argv[])
+Mat gaussianBlur(Mat lum)
 {   
-    if (argc != 2)
+    Mat blur = mat_alloc(lum.width, lum.height);
+
+#if 0
+    static float bk3[3][3] = {       // blur kernel (3 x 3) gaussian blur
+        {1, 2, 1},
+        {2, 4, 2},
+        {1, 2, 1}
+    };  // (/ 16) divide every element by 16
+#else 
+    static float bk5[5][5] = {      // blur kernel (5 x 5) gaussian blur (better approx)
+        {1, 4 , 6 , 4 , 1},
+        {4, 16, 24, 16, 4},
+        {6, 24, 36, 24, 6},
+        {4, 16, 24, 16, 4},
+        {1, 4 , 6 , 4 , 1}
+    };  // (/ 256) divide every element by 256
+#endif 
+
+    int kdim = 5;               // kernel dim in order of ranges of 2k + 1, -(2k + 1)
+
+    for (int i = 0; i < kdim; ++i) {
+        for (int j = 0; j < kdim; ++j) {
+            bk5[i][j] = bk5[i][j] / 256;
+        }
+    }
+
+    int width = lum.width;
+    int height = lum.height;
+
+    for (int cy = 0; cy < height; ++cy)
+    {
+        for (int cx = 0; cx < width; ++cx)
+        {
+            float acc = 0.0f;
+            for (int ky = -((kdim - 1) / 2); ky <= ((kdim - 1) / 2); ++ky)
+            {
+                for (int kx = -((kdim - 1) / 2); kx <= ((kdim - 1) / 2); ++kx)
+                {
+                    int x = cx + kx;
+                    int y = cy + ky;
+                    // ensure x & y stay in bounds of image dimensions
+                    float l = (0 <= x && x < width && 0 <= y && y < width) ? mat_at(lum, y, x) : 0.0f;
+                    // kx and ky start from -1 so offset by 1
+                    acc += bk5[ky + 1][kx + 1] * l;
+                }   
+            }
+            mat_at(blur, cy, cx) = acc;
+        }
+    }
+    return blur;
+}
+
+
+// Implementing bit masking 
+typedef enum {
+    DUMP_DUMP_IMg    = 0x00000400,  // 1 << 10
+    DUMP_LUMINANCE     = 0x00000001,  // 1 << 0
+    DUMP_GRADIENT      = 0x00000002,  // 1 << 1
+    DUMP_ENERGY        = 0x00000004,  // 1 << 2
+    DUMP_GAUSSIAN_BLUR = 0x00000008,  // 1 << 3
+    DUMP_COUNTS        = 0x00000010   // 1 << 4
+} dump_modes;
+
+int main(int argc, char *argv[])
+{       
+   if (argc != 2)
     {
         fprintf(stderr, "USAGE: <c_exec_file> <image_path (.jpgs file only)>\n");
         exit(EXIT_FAILURE);
@@ -301,67 +364,80 @@ int main(int argc, char *argv[])
 
     const char *inp_img_fp = argv[1];
 
-    int width, height;
-    uint32_t *pixels = (uint32_t *) stbi_load(inp_img_fp, &width, &height, NULL, 4);
+    int _width, _height;
+    uint32_t *pixels = (uint32_t *) stbi_load(inp_img_fp, &_width, &_height, NULL, 4);
     if (!pixels)  
     {
         fprintf(stderr, "ERROR: Failed to load image %s\n", inp_img_fp);
         exit(EXIT_FAILURE);
     }
 
-    Img img = img_alloc(width, height);
-    img.pixels = pixels;
+    Img img = {
+        .height = _height,
+        .width = _width,
+        .pixels = pixels,
+        .stride = _width
+    };
 
-    Mat luminance = get_lum(img);
-    dump_image_dn("luminance.jpg", luminance);
-    analyse_min_and_max("Luminance", &luminance);
+    Mat lum = mat_alloc(_width, _height);
+    Mat grad = mat_alloc(_width, _height);
+    Mat egy = mat_alloc(_width, _height);  
 
-    Mat grad = sobel(luminance);
-    dump_image_dn("gradient.jpg", grad);
-    analyse_min_and_max("Gradient", &grad);
-    
-    Mat energy_map = energy(grad);
-    dump_image_dn("energy.jpg", energy_map);
-    analyse_min_and_max("Energy", &energy_map);
-    
-
-#if 0
-    // Find the lowest energy column from the bottom most row 
-    int minCol = 0;
-    for (int x = 0; x < width; ++x)
-    {
-        if (energy_map[(height - 1) * width + x] < energy_map[(height - 1) * width + minCol]) minCol = x;
-    }   
-    pixels[(height - 1) * width + minCol] = red;
-#else 
-    int minCol = width / 2 ;        // column with minimun energy density
-#endif
-
-    // Iteration the rows from top to bottom and find the lowest energy pixel from the vicinity
+    // Iteration the rows from top to bottom and find the lowest energy pixel 
+    // or just pick a random seam from the vicinity
     // i.e, the three neighbouring images on top of the low energy pixel 
-    for (size_t i = 0; i < 100; ++i) {  // Calculate 100 seams at equal intervals
-        minCol = (width / 100) * i;
-        for (int y = height - 2; y >= 0; --y)
+
+    // What are we doing here?
+    // 'abcdefghijklm' -> image row , lets say 'f' is seam 
+    // - pixels_row + seam points to 'f'
+    // - pixels_row + seam + 1 points to next pixel of 'f'
+    // - copying entire array of &(pixels_row + seam + 1) to 1 step back and then reduce width
+
+    size_t n_iters = 100;
+    for (size_t i = 0; i < n_iters; ++i) {
+        printf("Removing Seam %zu\n", i);
+       
+        // Update these at every iteration 
+        luminance(img, lum);
+        sobel(lum, grad);
+        energy(grad, egy);
+
+        // Finding the minimum energy seam or selecting a random one
+        int seam = (rand() % img.width);
+        int y = img.height - 1;  
+
+        uint32_t *pixels_row = &img_at(img, y, 0);   // get the last row of the image
+        memmove(pixels_row + seam, pixels_row + seam + 1, ((img.width - seam - 1) * sizeof(uint32_t)));       // removing the seam 
+
+        for (y = img.height - 2; y >= 0; --y)
         {   
             for (int dx = -1; dx <= 1; ++dx)
             {
-                int x = minCol + dx;    // find the appropriate col
-                // if (0 <= x && x < width && energy_map[y * width + x] < energy_map[y * width + minCol])
-                if (0 <= x && x < width && mat_at(energy_map, y, x) < mat_at(energy_map, y, minCol))
+                int x = seam + dx;                 // find the appropriate seam col
+                if (0 <= x && x < img.width && mat_at(egy, y, x) < mat_at(egy, y, seam))
                 {   
-                    minCol = x;
+                    seam = x;
                 }
             }
-            pixels[y * width + minCol] = RED;
+            pixels_row = &img_at(img, y, 0);                                                         // get the row of the image
+            memmove(pixels_row + seam, pixels_row + seam + 1, ((img.width - seam - 1) * sizeof(uint32_t)));    // remove the seam 
+            // seam_image.pixels[y * seam_image.width + seam] = RED;     // Visualize the seams
         }
-    }
 
-    dump_image("image_with_seam.jpg", img);
-    
+        // Everytime we remove column reduce the width 
+        img.width  -= 1;
+        lum.width  -= 1;
+        grad.width -= 1;
+        egy.width  -= 1;  
+    }   
+
+    dump_img("seam.png", img);
+
     stbi_image_free(pixels);
-    mat_free(&luminance);
-    mat_free(&energy_map);
+    mat_free(&lum);
+    mat_free(&egy);
     mat_free(&grad);
 
     return 0;
 }
+

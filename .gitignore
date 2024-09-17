@@ -1,6 +1,9 @@
 main.dSYM
 nob.old
 *.jpg
+*.png
 .vscode
 main
+refr
 nob
+*.o
