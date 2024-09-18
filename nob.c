@@ -9,7 +9,7 @@
 
 double get_time(void)
 {
-    struct timespec tp = {};
+    struct timespec tp = {0};
     int ret = clock_gettime(CLOCK_MONOTONIC, &tp);
     assert(ret == 0);
     return tp.tv_sec + tp.tv_nsec * 1e-9;
@@ -18,7 +18,7 @@ double get_time(void)
 void cc(Nob_Cmd *cmd)
 {
     nob_cmd_append(cmd, "cc");
-    nob_cmd_append(cmd, "-Wall", "-Wextra", "-ggdb");
+    nob_cmd_append(cmd, "-Wall", "-Wextra", "-ggdb", "-std=c17");
 #if !defined(COMPILE_FASTER)
     nob_cmd_append(cmd, "-O3");
 #else 

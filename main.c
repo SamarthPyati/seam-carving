@@ -44,7 +44,7 @@ typedef struct
 #define mat_at(mat, i, j) ((mat).items[(mat).stride * (i) + (j)])
 #define img_at(img, i, j) ((img).pixels[(img).stride * (i) + (j)])
 
-Mat mat_alloc(int width, int height)
+static Mat mat_alloc(int width, int height)
 {
     Mat mat = {0};
     mat.items = (float *) malloc(sizeof(*mat.items) * width * height);
@@ -55,7 +55,7 @@ Mat mat_alloc(int width, int height)
     return mat;
 }
 
-Img img_alloc(int width, int height)
+static Img img_alloc(int width, int height)
 {
     Img img = {0};
     img.pixels = (uint32_t *) malloc(sizeof(*img.pixels) * width * height);
@@ -86,7 +86,7 @@ typedef struct {
 } color_t;
 
 
-color_t rgb_to_color_t(uint32_t rgb)
+static color_t rgb_to_color_t(uint32_t rgb)
 {
     uint8_t r = (rgb >> (8 * 0)) & 0xFF;
     uint8_t g = (rgb >> (8 * 1)) & 0xFF;
@@ -94,13 +94,13 @@ color_t rgb_to_color_t(uint32_t rgb)
     return (color_t) {.r = r, .g = g, .b = b};
 }
 
-void print_color_t(color_t c)
+static void print_color_t(color_t c)
 {   
     if (c.a == (uint8_t)-1)    printf("rgb(%u, %u, %u)\n", c.r, c.g, c.b);
     else printf("rgb(%u, %u, %u, %u)\n", c.r, c.g, c.b, c.a);
 }
 
-float rgb_to_lum(uint32_t rgb)
+static float rgb_to_lum(uint32_t rgb)
 {   
     // REFR: https://stackoverflow.com/questions/596216/formula-to-determine-perceived-brightness-of-rgb-color
     // Luminance is normalized 
@@ -110,7 +110,7 @@ float rgb_to_lum(uint32_t rgb)
     return (0.2126 * r + 0.7152 * g + 0.0722 * b);
 }
 
-void min_and_max(Mat *values, float *min, float *max)
+static void min_and_max(Mat *values, float *min, float *max)
 {
     *min = FLT_MAX;
     *max = FLT_MIN;
@@ -124,7 +124,7 @@ void min_and_max(Mat *values, float *min, float *max)
     }
 }
 
-void analyse_min_and_max(const char *prompt, Mat *values)
+static void analyse_min_and_max(const char *prompt, Mat *values)
 {   
     assert(values != NULL);
     float min, max;
@@ -132,7 +132,7 @@ void analyse_min_and_max(const char *prompt, Mat *values)
     printf("%s: (MIN -> %f & MAX -> %f)\n", prompt, min, max);
 }
 
-void normalize_pixels(Mat *values)
+static void normalize_pixels(Mat *values)
 {
     float min, max;
     min_and_max(values, &min, &max);
@@ -142,7 +142,7 @@ void normalize_pixels(Mat *values)
     }
 }
 
-bool dump_mat(const char *fp, Mat mat)
+static bool dump_mat(const char *fp, Mat mat)
 {
     uint32_t *pixels = NULL;
     bool result = true;
@@ -173,7 +173,7 @@ defer:
     return result;
 }
 
-void dump_img(const char *fp, Img img)
+static void dump_img(const char *fp, Img img)
 {       
     // Dumps the normalized images i.e with float values from 0.0 to 1.0 to a file path 
     assert(img.pixels != NULL);
@@ -186,7 +186,7 @@ void dump_img(const char *fp, Img img)
     else fprintf(stderr, "OK: Saved the image file at %s\n", fp);
 }
 
-void luminance(Img img, Mat lum)
+static void luminance(Img img, Mat lum)
 {   
     assert(lum.items != NULL);
     assert(lum.width == img.width);
@@ -200,14 +200,8 @@ void luminance(Img img, Mat lum)
     }
 }
 
-void sobel(Mat lum, Mat grad) 
-{       
-    // Convolutional kernel for SOBEL filter 
-    // REFR: https://en.wikipedia.org/wiki/Sobel_operator
-    assert(lum.items != NULL);
-    assert(lum.width == grad.width);
-    assert(lum.height == grad.height);
-
+static float sobel_at(Mat lum, int cy, int cx)
+{
     static float gx[3][3] = {
         {1.0, 0.0, -1.0},
         {2.0, 0.0, -2.0},
@@ -219,34 +213,45 @@ void sobel(Mat lum, Mat grad)
         {0.0, 0.0, 0.0},
         {-1.0, -2.0, -1.0}
     };
-    
+
+    float sx = 0.0f;
+    float sy = 0.0f;
+    for (int ky = -1; ky <= 1; ++ky)
+    {
+        for (int kx = -1; kx <= 1; ++kx)
+        {
+            int x = cx + kx;
+            int y = cy + ky;
+            // ensure x & y stay in bounds of image dimensions
+            float l = (0 <= x && x < lum.width && 0 <= y && y < lum.height) ? mat_at(lum, y, x) : 0.0f;
+            // kx and ky start from -1 so offset by 1
+            sx += gx[ky + 1][kx + 1] * l;
+            sy += gy[ky + 1][kx + 1] * l;
+        }
+    }
+    return sqrtf(sx * sx + sy * sy);
+}
+
+static void sobel(Mat lum, Mat grad) 
+{       
+    // Convolutional kernel for SOBEL filter 
+    // REFR: https://en.wikipedia.org/wiki/Sobel_operator
+    assert(lum.items != NULL);
+    assert(lum.width == grad.width);
+    assert(lum.height == grad.height);
+
     // Convolving the kernel and the image
     for (int cy = 0; cy < lum.height; ++cy)
     {
         for (int cx = 0; cx < lum.width; ++cx)
         {
-            float sx = 0.0f;
-            float sy = 0.0f;
-            for (int ky = -1; ky <= 1; ++ky)
-            {
-                for (int kx = -1; kx <= 1; ++kx)
-                {
-                    int x = cx + kx;
-                    int y = cy + ky;
-                    // ensure x & y stay in bounds of image dimensions
-                    float l = (0 <= x && x < lum.width && 0 <= y && y < lum.height) ? mat_at(lum, y, x) : 0.0f;
-                    // kx and ky start from -1 so offset by 1
-                    sx += gx[ky + 1][kx + 1] * l;
-                    sy += gy[ky + 1][kx + 1] * l;
-                }
-            }
             // magnitude of the gradient 
-            mat_at(grad, cy, cx) = sqrtf(sx * sx + sy * sy);
+            mat_at(grad, cy, cx) = sobel_at(lum, cy, cx);
         }
     }
 }   
 
-void energy(Mat grad, Mat energy)
+static void energy(Mat grad, Mat energy)
 {   
     assert(grad.items != NULL);
     assert(grad.width == energy.width);
@@ -279,7 +284,7 @@ void energy(Mat grad, Mat energy)
     }
 }
 
-Mat gaussianBlur(Mat lum)
+static Mat gaussianBlur(Mat lum)
 {   
     Mat blur = mat_alloc(lum.width, lum.height);
 
@@ -333,18 +338,50 @@ Mat gaussianBlur(Mat lum)
     return blur;
 }
 
-void remove_pixel_img(Img img, int r, int c)
+static void remove_pixel_img(Img img, int r, int c)
 {   
     // Remove a particular pixel from image ((r, c) pixel coordinate)
     uint32_t *pixels_row = &img_at(img, r, 0);   
     memmove(pixels_row + c, pixels_row + c + 1, ((img.width - c - 1) * sizeof(uint32_t)));      
 }
 
-void remove_pixel_mat(Mat mat, int r, int c)
+static void remove_pixel_mat(Mat mat, int r, int c)
 {   
     // Remove a particular pixel from image ((r, c) pixel coordinate)
     float *pixels_row = &mat_at(mat, r, 0);   
     memmove(pixels_row + c, pixels_row + c + 1, ((mat.width - c - 1) * sizeof(float)));      
+}
+
+static void remove_seam(Img img, Mat lum, Mat egy)
+{
+    // Finding the minimum energy seam or selecting a random one
+    int y = img.height - 1;  
+    int seam = 0;
+    for (int x = 0; x < img.width; ++x) 
+    {
+        if (mat_at(egy, y, x) < mat_at(egy, y, seam)) seam = x;
+    }
+
+    remove_pixel_img(img, y, seam);
+    // Since lum is one to one mapping of image we can just remove the pixels instead of 
+    // recomputing the lum everytime
+    remove_pixel_mat(lum, y, seam);
+
+    for (y = img.height - 2; y >= 0; --y)
+    {       
+        int original_seam = seam;
+        for (int dx = -1; dx <= 1; ++dx)
+        {
+            int x = original_seam + dx;                 
+            if (0 <= x && x < img.width && mat_at(egy, y, x) < mat_at(egy, y, seam))
+            {   
+                seam = x;
+            }
+        }
+        remove_pixel_img(img, y, seam);
+        remove_pixel_mat(lum, y, seam);
+        // seam_image.pixels[y * seam_image.width + seam] = RED;     // Visualize the seams
+    }
 }
 
 int main(int argc, char *argv[])
@@ -356,7 +393,7 @@ int main(int argc, char *argv[])
     }
 
     const char *inp_img_fp = argv[1];
-    size_t seam_to_remove = atoi(argv[2]);
+    size_t seams_to_remove = atoi(argv[2]);
 
     int _width, _height;
     uint32_t *pixels_ = (uint32_t *) stbi_load(inp_img_fp, &_width, &_height, NULL, 4);
@@ -366,19 +403,14 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    Img img = {
-        .height = _height,
-        .width = _width,
-        .pixels = pixels_,
-        .stride = _width
-    };
+    Img img = img_alloc(_width, _height);
+    img.pixels = pixels_;
 
     Mat lum = mat_alloc(_width, _height);
     Mat grad = mat_alloc(_width, _height);
     Mat egy = mat_alloc(_width, _height);  
     
     luminance(img, lum);
-
     // Iteration the rows from top to bottom and find the lowest energy pixel   
     // or just pick a random seam from the vicinity
     // i.e, the three neighbouring images on top of the low energy pixel 
@@ -389,43 +421,18 @@ int main(int argc, char *argv[])
     // - pixels_row + seam + 1 points to next pixel of 'f'
     // - copying entire array of &(pixels_row + seam + 1) to 1 step back and then reduce width
 
-    for (size_t i = 0; i < seam_to_remove; ++i) {
+    
+    for (size_t i = 0; i < seams_to_remove; ++i) {
+        
         printf("Removing Seam %zu\n", i);
        
         // Update these at every iteration 
         sobel(lum, grad);   
         energy(grad, egy);
 
-        // Finding the minimum energy seam or selecting a random one
-        int y = img.height - 1;  
-        int seam = 0;
-        for (int x = 0; x < img.width; ++x) 
-        {
-            if (mat_at(egy, y, x) < mat_at(egy, y, seam)) seam = x;
-        }
+        remove_seam(img, lum, egy);
 
-        remove_pixel_img(img, y, seam);
-        // Since lum is one to one mapping of image we can just remove the pixels instead of 
-        // recomputing the lum everytime
-        remove_pixel_mat(lum, y, seam);
-
-        for (y = img.height - 2; y >= 0; --y)
-        {       
-            int original_seam = seam;
-            for (int dx = -1; dx <= 1; ++dx)
-            {
-                int x = original_seam + dx;                 
-                if (0 <= x && x < img.width && mat_at(egy, y, x) < mat_at(egy, y, seam))
-                {   
-                    seam = x;
-                }
-            }
-            remove_pixel_img(img, y, seam);
-            remove_pixel_mat(lum, y, seam);
-            // seam_image.pixels[y * seam_image.width + seam] = RED;     // Visualize the seams
-        }
-
-        // Everytime we remove column reduce the width 
+        // Everytime we remove seam, reduce the width 
         img.width  -= 1;
         lum.width  -= 1;
         grad.width -= 1;
