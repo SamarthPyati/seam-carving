@@ -9,3 +9,4 @@ nob
 *.o
 build
 images
+.DS_Store

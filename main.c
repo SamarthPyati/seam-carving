@@ -284,10 +284,9 @@ static void energy(Mat grad, Mat energy)
     }
 }
 
-static Mat gaussianBlur(Mat lum)
+static void gaussianBlur(Mat lum, Mat img)
 {   
-    Mat blur = mat_alloc(lum.width, lum.height);
-
+    
 #if 0
     static float bk3[3][3] = {       // blur kernel (3 x 3) gaussian blur
         {1, 2, 1},
@@ -332,10 +331,9 @@ static Mat gaussianBlur(Mat lum)
                     acc += bk5[ky + 1][kx + 1] * l;
                 }   
             }
-            mat_at(blur, cy, cx) = acc;
+            mat_at(img, cy, cx) = acc;
         }
     }
-    return blur;
 }
 
 static void remove_pixel_img(Img img, int r, int c)
@@ -352,43 +350,60 @@ static void remove_pixel_mat(Mat mat, int r, int c)
     memmove(pixels_row + c, pixels_row + c + 1, ((mat.width - c - 1) * sizeof(float)));      
 }
 
-static void remove_seam(Img img, Mat lum, Mat egy)
+static void compute_seam(Mat egy, int *seams)
 {
+    // --- What are we doing here? --- 
+    // Iteration the rows from top to bottom and find the lowest energy pixel   
+    // or just pick a random seam from the vicinity
+    // i.e, the three neighbouring images on top of the low energy pixel 
+
+    // 'abcdefghijklm' -> image row , lets say 'f' is seam 
+    // - pixels_row + seam points to 'f'
+    // - pixels_row + seam + 1 points to next pixel of 'f'
+    // - copying entire array of &(pixels_row + seam + 1) to 1 step back and then reduce width
+
     // Finding the minimum energy seam or selecting a random one
-    int y = img.height - 1;  
-    int seam = 0;
-    for (int x = 0; x < img.width; ++x) 
+    int y = egy.height - 1;  
+    seams[y] = 0;
+    for (int x = 0; x < egy.width; ++x) 
     {
-        if (mat_at(egy, y, x) < mat_at(egy, y, seam)) seam = x;
+        if (mat_at(egy, y, x) < mat_at(egy, y, seams[y])) seams[y] = x;
     }
 
-    remove_pixel_img(img, y, seam);
-    // Since lum is one to one mapping of image we can just remove the pixels instead of 
-    // recomputing the lum everytime
-    remove_pixel_mat(lum, y, seam);
-
-    for (y = img.height - 2; y >= 0; --y)
-    {       
-        int original_seam = seam;
+    for (y = egy.height - 2; y >= 0; --y)
+    {           
+        // Since we are calculating this from bottom to top 
+        // We add 1 to get the previous seam
+        
+    //  current_seam = previous_seam
+        seams[y]     = seams[y + 1];
         for (int dx = -1; dx <= 1; ++dx)
         {
-            int x = original_seam + dx;                 
-            if (0 <= x && x < img.width && mat_at(egy, y, x) < mat_at(egy, y, seam))
+            int x = seams[y] + dx;                 
+            if (0 <= x && x < egy.width && mat_at(egy, y, x) < mat_at(egy, y, seams[y]))
             {   
-                seam = x;
+                seams[y] = x;
             }
         }
-        remove_pixel_img(img, y, seam);
-        remove_pixel_mat(lum, y, seam);
-        // seam_image.pixels[y * seam_image.width + seam] = RED;     // Visualize the seams
+    }
+}
+
+static void remove_seam(Img img, Mat lum, Mat egy, int *seams)
+{               
+    // Compute the seams or the indices of the seam for each row
+    compute_seam(egy, seams);
+    for (int y = 0; y < img.height; ++y)
+    {
+        remove_pixel_img(img, y, seams[y]);
+        remove_pixel_mat(lum, y, seams[y]);
     }
 }
 
 int main(int argc, char *argv[])
 {       
    if (argc != 3)
-    {
-        fprintf(stderr, "USAGE: <c_exec_file> <image_path (.jpgs file only)> <seams_to_remove>\n");
+    {   
+        fprintf(stderr, "USAGE: %s <image_file_path> <seams_to_remove>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
@@ -409,18 +424,11 @@ int main(int argc, char *argv[])
     Mat lum = mat_alloc(_width, _height);
     Mat grad = mat_alloc(_width, _height);
     Mat egy = mat_alloc(_width, _height);  
-    
+
+    // stores the index of seam in every row, so any index of this array represent the row of image
+    int *seams = malloc(sizeof(*seams) * _height);
+
     luminance(img, lum);
-    // Iteration the rows from top to bottom and find the lowest energy pixel   
-    // or just pick a random seam from the vicinity
-    // i.e, the three neighbouring images on top of the low energy pixel 
-
-    // What are we doing here?
-    // 'abcdefghijklm' -> image row , lets say 'f' is seam 
-    // - pixels_row + seam points to 'f'
-    // - pixels_row + seam + 1 points to next pixel of 'f'
-    // - copying entire array of &(pixels_row + seam + 1) to 1 step back and then reduce width
-
     
     for (size_t i = 0; i < seams_to_remove; ++i) {
         
@@ -430,8 +438,8 @@ int main(int argc, char *argv[])
         sobel(lum, grad);   
         energy(grad, egy);
 
-        remove_seam(img, lum, egy);
-
+        remove_seam(img, lum, egy, seams);
+        
         // Everytime we remove seam, reduce the width 
         img.width  -= 1;
         lum.width  -= 1;

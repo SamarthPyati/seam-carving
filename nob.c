@@ -18,7 +18,7 @@ double get_time(void)
 void cc(Nob_Cmd *cmd)
 {
     nob_cmd_append(cmd, "cc");
-    nob_cmd_append(cmd, "-Wall", "-Wextra", "-ggdb", "-std=c17");
+    nob_cmd_append(cmd, "-Wall", "-Wextra", "-Wno-unused-function", "-ggdb", "-std=c17");
 #if !defined(COMPILE_FASTER)
     nob_cmd_append(cmd, "-O3");
 #else 
@@ -55,6 +55,7 @@ int main(int argc, char **argv)
     if (!nob_mkdir_if_not_exists("./build/")) return 1;
     if (!rebuild_stb_if_needed(&cmd, "-DSTB_IMAGE_IMPLEMENTATION", "external/stb_image.h", "./build/stb_image.o")) return 1;
     if (!rebuild_stb_if_needed(&cmd, "-DSTB_IMAGE_WRITE_IMPLEMENTATION", "external/stb_image_write.h", "./build/stb_image_write.o")) return 1;
+    if (!rebuild_stb_if_needed(&cmd, "-DNOB_IMPLEMENTATION", "external/nob.h", "./build/nob.o")) return 1;
 
     const char *main_input = "main.c";
     const char *main_output = "./build/main";
@@ -64,6 +65,7 @@ int main(int argc, char **argv)
     nob_cmd_append(&cmd, main_input);
     nob_cmd_append(&cmd, "./build/stb_image.o");
     nob_cmd_append(&cmd, "./build/stb_image_write.o");
+    nob_cmd_append(&cmd, "./build/nob.o");
     nob_cmd_append(&cmd, "-lm");
     if (!nob_cmd_run_sync(cmd)) return 1;
 
