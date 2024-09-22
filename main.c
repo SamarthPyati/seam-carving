@@ -209,8 +209,8 @@ static float sobel_at(Mat lum, int cy, int cx)
     };
 
     static float gy[3][3] = {
-        {1.0, 2.0, 1.0},
-        {0.0, 0.0, 0.0},
+        { 1.0,  2.0,  1.0},
+        { 0.0,  0.0,  0.0},
         {-1.0, -2.0, -1.0}
     };
 
@@ -268,7 +268,9 @@ static void energy(Mat grad, Mat energy)
     {
         for (int cx = 0; cx < grad.width; ++cx)
         {       
-            // M(i, j) = e(i, j) + min(M(i − 1, j − 1), M(i − 1, j), M(i − 1, j + 1))
+            // WORKING: M(i, j) = e(i, j) + min(M(i − 1, j − 1), M(i − 1, j), M(i − 1, j + 1))
+            // TEST: M(i, j) = e(i, j) + min(M(i − 1, j - 2), M(i − 1, j − 1), M(i − 1, j), M(i − 1, j + 1), M(i − 1, j + 2))
+            
             float min = FLT_MAX;
             for (int dx = -1; dx <= 1; ++dx)
             {
@@ -388,19 +390,18 @@ static void compute_seam(Mat egy, int *seams)
     }
 }
 
-static void remove_seam(Img img, Mat lum, Mat egy, int *seams)
-{               
-    // Compute the seams or the indices of the seam for each row
-    compute_seam(egy, seams);
-    for (int y = 0; y < img.height; ++y)
-    {
-        remove_pixel_img(img, y, seams[y]);
-        remove_pixel_mat(lum, y, seams[y]);
-    }
-}
+// static void remove_seam(Img img, Mat lum, Mat egy, int *seams)
+// {                
+    // compute_seam(egy, seams); 
+    // for (int y = 0; y < img.height; ++y)
+    // {
+    //     remove_pixel_img(img, y, seams[y]);
+    //     remove_pixel_mat(lum, y, seams[y]);
+    // }
+// }
 
 int main(int argc, char *argv[])
-{       
+{           
    if (argc != 3)
     {   
         fprintf(stderr, "USAGE: %s <image_file_path> <seams_to_remove>\n", argv[0]);
@@ -423,30 +424,62 @@ int main(int argc, char *argv[])
 
     Mat lum = mat_alloc(_width, _height);
     Mat grad = mat_alloc(_width, _height);
-    Mat egy = mat_alloc(_width, _height);  
-
+    Mat egy = mat_alloc(_width, _height); 
     // stores the index of seam in every row, so any index of this array represent the row of image
     int *seams = malloc(sizeof(*seams) * _height);
 
     luminance(img, lum);
-    
-    for (size_t i = 0; i < seams_to_remove; ++i) {
-        
-        printf("Removing Seam %zu\n", i);
-       
-        // Update these at every iteration 
-        sobel(lum, grad);   
-        energy(grad, egy);
+    sobel(lum, grad);   
 
-        remove_seam(img, lum, egy, seams);
+    for (size_t i = 0; i < seams_to_remove; ++i) {
+        // Compute energy at every iteration
+        // sobel(lum, grad);
+        energy(grad, egy);
         
-        // Everytime we remove seam, reduce the width 
+        // Compute the low energy seams or the indices of the seam for each row & remove them 
+        compute_seam(egy, seams);
+
+        // -- Optimized the process of removing seams -- 
+        // mark the pixels around the seam
+        for (int cy = 0; cy < grad.height; ++cy)
+        {
+            int cx = seams[cy];
+            for (int dy = -1; dy <= 1; ++dy)
+            {
+               for (int dx = -1; dx <= 1; ++dx)
+                {
+                    int x = cx + dx;
+                    int y = cy + dy;
+                    if (0 <= x && x < grad.width && 0 <= y && y < grad.height) {
+                        *(uint32_t *)&mat_at(grad, y, x) = NAN;
+                    }
+                }
+            }
+
+            // remove the seam 
+            remove_pixel_mat(lum, cy, cx);
+            remove_pixel_mat(grad, cy, cx);
+            remove_pixel_img(img, cy, cx);
+        }
+
+        // reduce the width for each removed seam 
         img.width  -= 1;
         lum.width  -= 1;
         grad.width -= 1;
         egy.width  -= 1;  
+
+        // recompute the sobel only for the marked seam 
+        for (int cy = 0; cy < grad.height; ++cy) {
+            for (int cx = seams[cy]; cx < grad.width && *(uint32_t*)&mat_at(grad, cy, cx) == NAN; ++cx) {
+                mat_at(grad, cy, cx) = sobel_at(lum, cy, cx);
+            }
+            for (int cx = seams[cy]; cx>= 0 && *(uint32_t*)&mat_at(grad, cy, cx) == NAN; ++cx) {
+                mat_at(grad, cy, cx) = sobel_at(lum, cy, cx);
+            }
+        }
     }   
 
+    dump_mat("gradient.png", grad);
     dump_img("output.png", img);
 
     stbi_image_free(pixels_);
@@ -456,4 +489,3 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
