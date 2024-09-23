@@ -19,6 +19,7 @@ void cc(Nob_Cmd *cmd)
 {
     nob_cmd_append(cmd, "cc");
     nob_cmd_append(cmd, "-Wall", "-Wextra", "-Wno-unused-function", "-ggdb", "-std=c17");
+    // nob_cmd_append(cmd, "-fopenmp");    // OpenMP
 #if !defined(COMPILE_FASTER)
     nob_cmd_append(cmd, "-O3");
 #else 

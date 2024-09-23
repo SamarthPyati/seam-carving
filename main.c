@@ -43,6 +43,9 @@ typedef struct
 
 #define mat_at(mat, i, j) ((mat).items[(mat).stride * (i) + (j)])
 #define img_at(img, i, j) ((img).pixels[(img).stride * (i) + (j)])
+#define mat_within(mat, i, j) (0 <= i && i < (mat).width && 0 <= j && j < (mat).height)
+
+#define RED (uint32_t)0xFF0000FF;
 
 static Mat mat_alloc(int width, int height)
 {
@@ -76,8 +79,6 @@ void img_free(Img *img)
     free(img->pixels);
 }
 
-#define RED (uint32_t)0xFF0000FF;
-
 typedef struct {
     uint8_t r;
     uint8_t g;
@@ -110,17 +111,28 @@ static float rgb_to_lum(uint32_t rgb)
     return (0.2126 * r + 0.7152 * g + 0.0722 * b);
 }
 
-static void min_and_max(Mat *values, float *min, float *max)
-{
-    *min = FLT_MAX;
-    *max = FLT_MIN;
-    for (int y = 0; y < values->height; ++y)
+static void min_and_max(Mat *values, float *min, float *max, int l, int r)
+{   
+    // Divide and conquer approach
+    if (l == r) // only element present
     {
-        for (int x = 0; x < values->width; ++x)
-        {
-            if (mat_at(*values, y, x) < *min) *min = mat_at(*values, y, x);
-            if (mat_at(*values, y, x) > *max) *max = mat_at(*values, y, x);
-        }
+        *min = values->items[l];
+        *max = values->items[l];
+    }
+    else if (l == r - 1)  // two elements present 
+    {
+        *max = (values->items[l] > values->items[r]) ? values->items[l] : values->items[r]; 
+        *min = (values->items[l] < values->items[r]) ? values->items[l] : values->items[r]; 
+    }
+    else 
+    {   
+        // Divide the arrays into 2 
+        float lmax, lmin, rmax, rmin;
+        int mid = l + (r - l) / 2;
+        min_and_max(values, &lmin, &lmax, l, mid);
+        min_and_max(values, &rmin, &rmax, mid + 1, r);
+        *max = (lmax > rmax) ? lmax : rmax;
+        *min = (lmin < rmin) ? lmin : rmin;
     }
 }
 
@@ -128,14 +140,15 @@ static void analyse_min_and_max(const char *prompt, Mat *values)
 {   
     assert(values != NULL);
     float min, max;
-    min_and_max(values, &min, &max);
+    min_and_max(values, &min, &max, 0, values->width * values->height - 1);
     printf("%s: (MIN -> %f & MAX -> %f)\n", prompt, min, max);
 }
 
 static void normalize_pixels(Mat *values)
 {
     float min, max;
-    min_and_max(values, &min, &max);
+    int val_len = values->width * values->height - 1;
+    min_and_max(values, &min, &max, 0, val_len);
     for (int i = 0; i < values->width * values->height; ++i)
     {
         values->items[i] = (values->items[i] - min) / (max - min);
@@ -400,6 +413,28 @@ static void compute_seam(Mat egy, int *seams)
     // }
 // }
 
+void markout_sobel_patches(Mat grad, int *seams)
+{
+    // -- Optimized the process of removing seams -- 
+    // mark the pixels around the seam
+    #pragma omp parallel for 
+    for (int cy = 0; cy < grad.height; ++cy)
+    {
+        int cx = seams[cy];
+        for (int dy = -1; dy <= 1; ++dy)
+        {
+            for (int dx = -1; dx <= 1; ++dx)
+            {
+                int x = cx + dx;
+                int y = cy + dy;
+                if (0 <= x && x < grad.width && 0 <= y && y < grad.height) {
+                    *(uint32_t *)&mat_at(grad, y, x) = NAN;
+                }
+            }
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {           
    if (argc != 3)
@@ -438,29 +473,16 @@ int main(int argc, char *argv[])
         
         // Compute the low energy seams or the indices of the seam for each row & remove them 
         compute_seam(egy, seams);
-
-        // -- Optimized the process of removing seams -- 
-        // mark the pixels around the seam
-        for (int cy = 0; cy < grad.height; ++cy)
-        {
-            int cx = seams[cy];
-            for (int dy = -1; dy <= 1; ++dy)
-            {
-               for (int dx = -1; dx <= 1; ++dx)
-                {
-                    int x = cx + dx;
-                    int y = cy + dy;
-                    if (0 <= x && x < grad.width && 0 <= y && y < grad.height) {
-                        *(uint32_t *)&mat_at(grad, y, x) = NAN;
-                    }
-                }
-            }
-
+        markout_sobel_patches(grad, seams);
+        
+        for (int cy = 0; cy < grad.height; ++cy) {
             // remove the seam 
+            int cx = seams[cy];
             remove_pixel_mat(lum, cy, cx);
             remove_pixel_mat(grad, cy, cx);
             remove_pixel_img(img, cy, cx);
-        }
+        }        
+
 
         // reduce the width for each removed seam 
         img.width  -= 1;
@@ -469,11 +491,12 @@ int main(int argc, char *argv[])
         egy.width  -= 1;  
 
         // recompute the sobel only for the marked seam 
+        #pragma omp parallel for 
         for (int cy = 0; cy < grad.height; ++cy) {
             for (int cx = seams[cy]; cx < grad.width && *(uint32_t*)&mat_at(grad, cy, cx) == NAN; ++cx) {
                 mat_at(grad, cy, cx) = sobel_at(lum, cy, cx);
             }
-            for (int cx = seams[cy]; cx>= 0 && *(uint32_t*)&mat_at(grad, cy, cx) == NAN; ++cx) {
+            for (int cx = seams[cy - 1]; cx >= 0 && *(uint32_t*)&mat_at(grad, cy, cx) == NAN; --cx) {
                 mat_at(grad, cy, cx) = sobel_at(lum, cy, cx);
             }
         }
@@ -481,6 +504,9 @@ int main(int argc, char *argv[])
 
     dump_mat("gradient.png", grad);
     dump_img("output.png", img);
+
+    analyse_min_and_max("Gradient", &grad);
+    analyse_min_and_max("Luminance", &lum);
 
     stbi_image_free(pixels_);
     mat_free(&lum);
