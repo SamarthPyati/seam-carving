@@ -27,7 +27,7 @@ void cc(Nob_Cmd *cmd)
 #endif
 }
 
-bool rebuild_stb_if_needed(Nob_Cmd *cmd, const char *implementation, const char *input, const char *output)
+bool build_libs(Nob_Cmd *cmd, const char *implementation, const char *input, const char *output)
 {
     if (nob_needs_rebuild1(output, input)) {
         cmd->count = 0;
@@ -54,9 +54,9 @@ int main(int argc, char **argv)
     Nob_Cmd cmd = {0};
 
     if (!nob_mkdir_if_not_exists("./build/")) return 1;
-    if (!rebuild_stb_if_needed(&cmd, "-DSTB_IMAGE_IMPLEMENTATION", "external/stb_image.h", "./build/stb_image.o")) return 1;
-    if (!rebuild_stb_if_needed(&cmd, "-DSTB_IMAGE_WRITE_IMPLEMENTATION", "external/stb_image_write.h", "./build/stb_image_write.o")) return 1;
-    if (!rebuild_stb_if_needed(&cmd, "-DNOB_IMPLEMENTATION", "external/nob.h", "./build/nob.o")) return 1;
+    if (!build_libs(&cmd, "-DSTB_IMAGE_IMPLEMENTATION", "external/stb_image.h", "./build/stb_image.o")) return 1;
+    if (!build_libs(&cmd, "-DSTB_IMAGE_WRITE_IMPLEMENTATION", "external/stb_image_write.h", "./build/stb_image_write.o")) return 1;
+    if (!build_libs(&cmd, "-DNOB_IMPLEMENTATION", "external/nob.h", "./build/nob.o")) return 1;
 
     const char *main_input = "main.c";
     const char *main_output = "./build/main";
@@ -64,6 +64,7 @@ int main(int argc, char **argv)
     cc(&cmd);
     nob_cmd_append(&cmd, "-o", main_output);
     nob_cmd_append(&cmd, main_input);
+    nob_cmd_append(&cmd, "-I.");
     nob_cmd_append(&cmd, "./build/stb_image.o");
     nob_cmd_append(&cmd, "./build/stb_image_write.o");
     nob_cmd_append(&cmd, "./build/nob.o");

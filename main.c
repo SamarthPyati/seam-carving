@@ -7,13 +7,13 @@
 #include <float.h>
 #include <math.h>
 
-#include "external/stb_image.h"
-#include "external/stb_image_write.h"
-#include "external/nob.h"
+#include <external/stb_image.h>
+#include <external/stb_image_write.h>
+#include <external/nob.h>
 
 
 /* 
-    -- NOTE: -- 
+    --- NOTE: --- 
     Color Information stored in uint32_t
     - > [BBBBBBBB][GGGGGGGG][RRRRRRRR][AAAAAAAA] or 0xAARRGGBB
 
@@ -318,7 +318,7 @@ static void gaussianBlur(Mat lum, Mat img)
     };  // (/ 256) divide every element by 256
 #endif 
 
-    int kdim = 5;               // kernel dim in order of ranges of 2k + 1, -(2k + 1)
+    int kdim = 5;                  // kernel dim in order of ranges of 2k + 1, -(2k + 1)
 
     for (int i = 0; i < kdim; ++i) {
         for (int j = 0; j < kdim; ++j) {
