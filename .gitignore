@@ -1,12 +1,19 @@
-*.dSYM
-nob.old
-*.jpg
-*.png
+# Editor 
 .vscode
-main
-refr
-nob
-*.o
-build
-images
+
+# Compilation & Debug
 .DS_Store
+*.dSYM
+*.o
+
+# Builder
+nob.old
+nob
+main
+build
+
+# images
+images
+output.png 
+gradient.png
+energy.png

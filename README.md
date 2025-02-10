@@ -4,11 +4,11 @@ Seam Carving is an implementation of content-aware image resizing algorithm that
 
 ## Demo
 <p align="center">
-  <figure style="display: inline-block; margin: 0 10px; text-align: center; padding:30px">
+  <figure style="display: inline-block; margin: 0 10px; text-align: center; padding:20px">
     <img src="./demo-images/tower.jpg" height="300">
     <figcaption><b>Original Image</b></figcaption>
   </figure>
-  <figure style="display: inline-block; margin: 0 10px; text-align: center; padding:30px">
+  <figure style="display: inline-block; margin: 0 10px; text-align: center; padding:20px">
     <img src="./demo-images/tower_cropped.png" height="300">
     <figcaption><b>Seam Carved Image</b></figcaption>
   </figure>
