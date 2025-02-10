@@ -465,6 +465,7 @@ int main(int argc, char *argv[])
 
     luminance(img, lum);
     sobel(lum, grad);   
+    energy(grad, egy);
 
     for (size_t i = 0; i < seams_to_remove; ++i) {
         // Compute energy at every iteration
@@ -502,8 +503,9 @@ int main(int argc, char *argv[])
         }
     }   
 
-    dump_mat("gradient.png", grad);
+    // dump_mat("gradient.png", grad);
     dump_img("output.png", img);
+    // dump_mat("energy.png", egy);
 
     analyse_min_and_max("Gradient", &grad);
     analyse_min_and_max("Luminance", &lum);
