@@ -17,3 +17,6 @@ images
 output.png 
 gradient.png
 energy.png
+
+# experimental  
+gui.c
