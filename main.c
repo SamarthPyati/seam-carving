@@ -6,11 +6,11 @@
 #include <stdbool.h>
 #include <float.h>
 #include <math.h>
+#include <omp.h>
 
-#include <external/stb_image.h>
-#include <external/stb_image_write.h>
-#include <external/nob.h>
-
+#include <stb_image.h>
+#include <stb_image_write.h>
+#include <nob.h>
 
 /* 
     --- NOTE: --- 
@@ -47,7 +47,7 @@ typedef struct
 
 #define RED (uint32_t)0xFF0000FF;
 
-static Mat mat_alloc(int width, int height)
+static inline Mat mat_alloc(int width, int height)
 {
     Mat mat = {0};
     mat.items = (float *) malloc(sizeof(*mat.items) * width * height);
@@ -58,7 +58,7 @@ static Mat mat_alloc(int width, int height)
     return mat;
 }
 
-static Img img_alloc(int width, int height)
+static inline Img img_alloc(int width, int height)
 {
     Img img = {0};
     img.pixels = (uint32_t *) malloc(sizeof(*img.pixels) * width * height);
@@ -69,14 +69,16 @@ static Img img_alloc(int width, int height)
     return img;
 }
 
-void mat_free(Mat *mat)
+void inline mat_free(Mat *mat)
 {
     free(mat->items);
+    mat->items = NULL;
 }
 
-void img_free(Img *img)
+void inline img_free(Img *img)
 {
     free(img->pixels);
+    img->pixels = NULL;
 }
 
 typedef struct {
@@ -213,20 +215,20 @@ static void luminance(Img img, Mat lum)
     }
 }
 
+const static float gx[3][3] = {
+    {1.0, 0.0, -1.0},
+    {2.0, 0.0, -2.0},
+    {1.0, 0.0, -1.0}
+};
+
+const static float gy[3][3] = {
+    { 1.0,  2.0,  1.0},
+    { 0.0,  0.0,  0.0},
+    {-1.0, -2.0, -1.0}
+};
+
 static float sobel_at(Mat lum, int cy, int cx)
 {
-    static float gx[3][3] = {
-        {1.0, 0.0, -1.0},
-        {2.0, 0.0, -2.0},
-        {1.0, 0.0, -1.0}
-    };
-
-    static float gy[3][3] = {
-        { 1.0,  2.0,  1.0},
-        { 0.0,  0.0,  0.0},
-        {-1.0, -2.0, -1.0}
-    };
-
     float sx = 0.0f;
     float sy = 0.0f;
     for (int ky = -1; ky <= 1; ++ky)
@@ -436,7 +438,12 @@ void markout_sobel_patches(Mat grad, int *seams)
 }
 
 int main(int argc, char *argv[])
-{           
+{               
+
+    // Testing OMP 
+    uint32_t num_thread = omp_get_num_threads();
+    nob_log(NOB_INFO, "Number of threads %u\n", num_thread);
+
    if (argc != 3)
     {   
         fprintf(stderr, "USAGE: %s <image_file_path> <seams_to_remove>\n", argv[0]);

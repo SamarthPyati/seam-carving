@@ -6,6 +6,7 @@
 #include <time.h>
 
 // #define COMPILE_FASTER
+#define COMPILE_NATIVE
 
 double get_time(void)
 {
@@ -15,11 +16,21 @@ double get_time(void)
     return tp.tv_sec + tp.tv_nsec * 1e-9;
 }
 
+void intergrate_omp(Nob_Cmd *cmd) {
+    // OpenMP
+    nob_cmd_append(cmd, "-L/opt/homebrew/opt/libomp/lib", "-I/opt/homebrew/opt/libomp/include", "-lomp");    
+}
+
 void cc(Nob_Cmd *cmd)
 {
     nob_cmd_append(cmd, "cc");
-    nob_cmd_append(cmd, "-Wall", "-Wextra", "-Wno-unused-function", "-ggdb", "-std=c17");
-    // nob_cmd_append(cmd, "-fopenmp");    // OpenMP
+    nob_cmd_append(cmd, "-Wall", "-Wextra", "-Wno-unused-function", "-g", "-std=c17");
+    intergrate_omp(cmd);
+
+#if defined(COMPILE_NATIVE)
+    nob_cmd_append(cmd, "-march=native");
+#endif
+    
 #if !defined(COMPILE_FASTER)
     nob_cmd_append(cmd, "-O3");
 #else 
@@ -65,6 +76,7 @@ int main(int argc, char **argv)
     nob_cmd_append(&cmd, "-o", main_output);
     nob_cmd_append(&cmd, main_input);
     nob_cmd_append(&cmd, "-I.");
+    nob_cmd_append(&cmd, "-I./external");
     nob_cmd_append(&cmd, "./build/stb_image.o");
     nob_cmd_append(&cmd, "./build/stb_image_write.o");
     nob_cmd_append(&cmd, "./build/nob.o");
@@ -77,7 +89,7 @@ int main(int argc, char **argv)
     double begin = get_time();
     if (!nob_cmd_run_sync(cmd)) return 1;
     double end = get_time();
-    nob_log(NOB_INFO, "Execution time: %lf(s)", end - begin);
+    nob_log(NOB_INFO, "Execution time: %lf second(s)", end - begin);
 
     return 0;
 }
