@@ -256,8 +256,10 @@ static void sobel(Mat lum, Mat grad)
     assert(lum.height == grad.height);
 
     // Convolving the kernel and the image
+    #pragma omp parellel for
     for (int cy = 0; cy < lum.height; ++cy)
     {
+        #pragma omp parellel for
         for (int cx = 0; cx < lum.width; ++cx)
         {
             // magnitude of the gradient 
@@ -273,14 +275,17 @@ static void energy(Mat grad, Mat energy)
     assert(grad.height == energy.height);
 
     // Calculate the energy 
+    #pragma omp parellel for 
     for (int x = 0; x < grad.width; ++x) 
     {   
         // Copy the first row as it is, as there's no row above to calculate the energy
         mat_at(energy, 0, x) = mat_at(grad, 0, x);
     }
     
+    #pragma omp parellel for 
     for (int cy = 1; cy < grad.height; ++cy)
     {
+        #pragma omp parellel for 
         for (int cx = 0; cx < grad.width; ++cx)
         {       
             // WORKING: M(i, j) = e(i, j) + min(M(i − 1, j − 1), M(i − 1, j), M(i − 1, j + 1))
@@ -301,11 +306,8 @@ static void energy(Mat grad, Mat energy)
     }
 }
 
-static void gaussianBlur(Mat lum, Mat img)
-{   
-    
 #if 0
-    static float bk3[3][3] = {       // blur kernel (3 x 3) gaussian blur
+    const static float bk3[3][3] = {       // blur kernel (3 x 3) gaussian blur
         {1, 2, 1},
         {2, 4, 2},
         {1, 2, 1}
@@ -320,13 +322,23 @@ static void gaussianBlur(Mat lum, Mat img)
     };  // (/ 256) divide every element by 256
 #endif 
 
-    int kdim = 5;                  // kernel dim in order of ranges of 2k + 1, -(2k + 1)
-
-    for (int i = 0; i < kdim; ++i) {
-        for (int j = 0; j < kdim; ++j) {
-            bk5[i][j] = bk5[i][j] / 256;
+void normalize_filter(float **kernel, size_t dim) {
+    const size_t RGBA_RANGE = 256;
+    #pragma omp parellel for 
+    for (size_t i = 0; i < dim; ++i) {
+        #pragma omp parellel for 
+        for (size_t j = 0; j < dim; ++j) {
+            kernel[i][j] /= RGBA_RANGE;
         }
     }
+}
+
+static void gaussianBlur(Mat lum, Mat img)
+{   
+    
+    int kdim = 5;                  // kernel dim in order of ranges of 2k + 1, -(2k + 1)
+
+    normalize_filter(&bk5[0][0], 5);
 
     int width = lum.width;
     int height = lum.height;

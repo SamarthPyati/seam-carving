@@ -12,11 +12,12 @@ nob
 main
 build
 
-# images
-images
+# Images
+images/ 
 output.png 
 gradient.png
 energy.png
 
-# experimental  
+# Experimental  
 gui.c
+
