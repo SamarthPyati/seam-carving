@@ -1,18 +1,20 @@
 # Seam Carving
 
-Seam Carving is an implementation of content-aware image resizing algorithm that selectively removes or inserts pixels in an image to change its dimensions while preserving important visual content without any application of extensive machine learning models. 
+Seam Carving is an implementation of content-aware image resizing algorithm that selectively removes or inserts seam of pixels in an image to change its dimensions while preserving important visual content in the image without any application of extensive machine learning algorithms. 
 
 ## Demo
-<p align="center">
-  <figure style="display: inline-block; margin: 0 10px; text-align: center; padding:20px">
-    <img src="./demo-images/tower.jpg" height="200">
-    <figcaption><b>Original Image</b></figcaption>
-  </figure>
-  <figure style="display: inline-block; margin: 0 10px; text-align: center; padding:20px">
-    <img src="./demo-images/tower_cropped.png" height="200">
-    <figcaption><b>Seam Carved Image</b></figcaption>
-  </figure>
-</p>
+<div align="center">
+   <div style="display: flex; justify-content: center; gap: 20px;">
+      <div>
+         <img src="./demo-images/tower.jpg" height="200" alt="Original Image">
+         <p><b>Original Image</b></p>
+      </div>
+      <div>
+         <img src="./demo-images/tower_cropped.png" height="200" alt="Seam Carved Image">
+         <p><b>Seam Carved Image</b></p>
+      </div>
+   </div>
+</div>
 
 ## Features
 
@@ -32,6 +34,7 @@ Seam Carving is an implementation of content-aware image resizing algorithm that
    ```
 3. Compile the program:
    ```sh
+   cc nob.c -o nob
    ./nob
    ```
 4. Run the program:
@@ -40,8 +43,7 @@ Seam Carving is an implementation of content-aware image resizing algorithm that
    ```
 
 ## Acknowledgements
- Seam Carving Paper: [Seam carving for content-aware image resizing](https://dl.acm.org/doi/10.1145/1275808.1276390)
+Seam Carving Paper: [Seam carving for content-aware image resizing](https://dl.acm.org/doi/10.1145/1275808.1276390)
 
 ## Contributing
-
 Feel free to fork this repository and submit pull requests. 

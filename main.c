@@ -450,11 +450,20 @@ void markout_sobel_patches(Mat grad, int *seams)
 }
 
 int main(int argc, char *argv[])
-{               
+{    
+    normalize_filter(bk5, 5);
 
-    // Testing OMP 
-    uint32_t num_thread = omp_get_num_threads();
-    nob_log(NOB_INFO, "Number of threads %u\n", num_thread);
+    for (size_t i = 0; i < 5; ++i) {
+        for (size_t j = 0; j < 5; ++j) {
+            printf("%f ", bk5[i][j]);
+        }
+        printf("\n");
+    }
+
+    return 0;
+    // // Testing OMP 
+    // uint32_t num_thread = omp_get_num_threads();
+    // nob_log(NOB_INFO, "Number of threads %u\n", num_thread);
 
    if (argc != 3)
     {   
@@ -523,11 +532,11 @@ int main(int argc, char *argv[])
     }   
 
     // dump_mat("gradient.png", grad);
-    dump_img("output.png", img);
     // dump_mat("energy.png", egy);
+    dump_img("output.png", img);
 
-    analyse_min_and_max("Gradient", &grad);
-    analyse_min_and_max("Luminance", &lum);
+    // analyse_min_and_max("Gradient", &grad);
+    // analyse_min_and_max("Luminance", &lum);
 
     stbi_image_free(pixels_);
     mat_free(&lum);
