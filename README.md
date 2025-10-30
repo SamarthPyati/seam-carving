@@ -1,6 +1,6 @@
 # Seam Carving
 
-Seam Carving is an implementation of content-aware image resizing algorithm that selectively removes or inserts pixels in an image to change its dimensions while preserving important visual content without any application of machine learning. 
+Seam Carving is an implementation of content-aware image resizing algorithm that selectively removes or inserts pixels in an image to change its dimensions while preserving important visual content without any application of extensive machine learning models. 
 
 ## Demo
 <p align="center">
