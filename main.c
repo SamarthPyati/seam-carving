@@ -12,6 +12,8 @@
 #include <stb_image_write.h>
 #include <nob.h>
 
+#include <utils.h>
+
 /* 
     --- NOTE: --- 
     Color layout used by stbi_load (bytes in memory): [R][G][B][A]
@@ -157,7 +159,8 @@ static void normalize_pixels(Mat *values)
     min_and_max(values, &min, &max, 0, count - 1);
 
     if (max == min) {
-        for (int i = 0; i < count; ++i) values->items[i] = 0.0f;
+        // Identical elements, avoid division by zero and instead set all to zero
+        memset(values->items, 0.0f, sizeof(*values->items) * count);
         return;
     }
 
@@ -188,10 +191,10 @@ static bool dump_mat(const char *fp, Mat mat)
 
     if (!stbi_write_png(fp, mat.width, mat.height, 4, pixels, mat.width * sizeof(*pixels))) 
     {
-        fprintf(stderr, "ERROR: could not save file %s", fp);
+        LOG_ERROR("ERROR: could not save file %s", fp);
         nob_return_defer(false);
     }
-    else fprintf(stderr, "OK: Saved the image file at %s\n", fp);
+    else LOG_ERROR("OK: Saved the image file at %s\n", fp);
 
 defer:
     free(pixels);
@@ -205,10 +208,9 @@ static void dump_img(const char *fp, Img img)
 
     if (!stbi_write_png(fp, img.width, img.height, 4, img.pixels, img.stride * sizeof(uint32_t)))  
     {
-        fprintf(stderr, "ERROR: Could not write the image file %s\n", fp);
-        exit(EXIT_FAILURE);
+        LOG_ERROR_AND_ABORT("ERROR: Could not write the image file %s\n", fp);
     }
-    else fprintf(stderr, "OK: Saved the image file at %s\n", fp);
+    else LOG_ERROR("OK: Saved the image file at %s\n", fp);
 }
 
 static void luminance(Img img, Mat lum)
@@ -332,17 +334,6 @@ static void energy(Mat grad, Mat energy)
     };  // (/ 256) divide every element by 256
 #endif 
 
-// void normalize_filter(float **kernel, size_t dim) {
-//     const size_t RGBA_RANGE = 256;
-//     #pragma omp parellel for 
-//     for (size_t i = 0; i < dim; ++i) {
-//         #pragma omp parellel for 
-//         for (size_t j = 0; j < dim; ++j) {
-//             kernel[i][j] /= RGBA_RANGE;
-//         }
-//     }
-// }
-
 static void gaussianBlur(Mat lum, Mat img)
 {   
     
@@ -461,40 +452,34 @@ void markout_sobel_patches(Mat grad, int *seams)
 
 int main(int argc, char *argv[])
 {    
-    // // Testing OMP 
-    // uint32_t num_thread = omp_get_num_threads();
-    // nob_log(NOB_INFO, "Number of threads %u\n", num_thread);
-
-   if (argc != 3)
-    {   
-        fprintf(stderr, "USAGE: %s <image_file_path> <seams_to_remove>\n", argv[0]);
-        exit(EXIT_FAILURE);
+    if (argc != 3)
+    {
+        LOG_USAGE(argv[0], "<image_file_path> <seams_to_remove>");
     }
 
     const char *file_path = argv[1];
-    size_t seams_to_remove = (size_t)atoi(argv[2]);
+    size_t seams_to_remove = atoi(argv[2]);
 
-    int _width, _height;
-    uint32_t *pixels_ = (uint32_t *) stbi_load(file_path, &_width, &_height, NULL, 4);
-    if (!pixels_)  
-    {
-        fprintf(stderr, "ERROR: Failed to load image %s\n", file_path);
-        exit(EXIT_FAILURE);
+    int width, height;
+    uint32_t *pixels = (uint32_t *) stbi_load(file_path, &width, &height, NULL, 4);
+    if (!pixels)  
+    {   
+        LOG_ERROR("ERROR: Failed to load image %s\n", file_path);
     }
 
     Img img = {0};
-    img.pixels = pixels_;
-    img.width = _width;
-    img.height = _height;
-    img.stride = _width;
+    img.pixels = pixels;
+    img.width = width;
+    img.height = height;
+    img.stride = width;
 
-    if (_width > 0 && seams_to_remove >= (size_t)_width) seams_to_remove = (size_t)_width - 1;
+    CLAMP_ASSIGN(seams_to_remove, 0UL, width - 1UL);
 
-    Mat lum = mat_alloc(_width, _height);
-    Mat grad = mat_alloc(_width, _height);
-    Mat egy = mat_alloc(_width, _height); 
+    Mat lum = mat_alloc(width, height);
+    Mat grad = mat_alloc(width, height);
+    Mat egy = mat_alloc(width, height); 
     // stores the index of seam in every row, so any index of this array represent the row of image
-    int *seams = malloc(sizeof(*seams) * _height);
+    int *seams = malloc(sizeof(*seams) * height);
 
     luminance(img, lum);
     sobel(lum, grad);   
@@ -548,7 +533,7 @@ int main(int argc, char *argv[])
     // analyse_min_and_max("Gradient", &grad);
     // analyse_min_and_max("Luminance", &lum);
 
-    stbi_image_free(pixels_);
+    stbi_image_free(pixels);
     mat_free(&lum);
     mat_free(&egy);
     mat_free(&grad);
