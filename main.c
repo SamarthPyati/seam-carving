@@ -14,15 +14,16 @@
 
 /* 
     --- NOTE: --- 
-    Color Information stored in uint32_t
-    - > [BBBBBBBB][GGGGGGGG][RRRRRRRR][AAAAAAAA] or 0xAARRGGBB
+    Color layout used by stbi_load (bytes in memory): [R][G][B][A]
+    On little-endian machines a `uint32_t` view of the 4 bytes becomes 0xAABBGGRR.
 
-    Extraction of each:
-    RED:    (color >> 16) & 0xFF;
-    GREEN:  (color >> 8)  & 0xFF;
-    BLUE:   (color >> 0)  & 0xFF;
-    
-    uint32_t color = (a << 24) | (r << 16) | (g << 8) | b;
+    Extraction of each channel (works on this platform):
+    RED:    (color >> 0) & 0xFF;
+    GREEN:  (color >> 8) & 0xFF;
+    BLUE:   (color >> 16) & 0xFF;
+    ALPHA:  (color >> 24) & 0xFF;
+
+    uint32_t packed = (a << 24) | (b << 16) | (g << 8) | r;
 */
 
 
@@ -43,7 +44,7 @@ typedef struct
 
 #define mat_at(mat, i, j) ((mat).items[(mat).stride * (i) + (j)])
 #define img_at(img, i, j) ((img).pixels[(img).stride * (i) + (j)])
-#define mat_within(mat, i, j) (0 <= i && i < (mat).width && 0 <= j && j < (mat).height)
+#define mat_within(mat, i, j) (0 <= i && i < (mat).height && 0 <= j && j < (mat).width)
 
 #define RED (uint32_t)0xFF0000FF
 
@@ -69,13 +70,13 @@ static inline Img img_alloc(int width, int height)
     return img;
 }
 
-void inline mat_free(Mat *mat)
+static inline void mat_free(Mat *mat)
 {
     free(mat->items);
     mat->items = NULL;
 }
 
-void inline img_free(Img *img)
+static inline void img_free(Img *img)
 {
     free(img->pixels);
     img->pixels = NULL;
@@ -94,7 +95,8 @@ static color_t rgb_to_color_t(uint32_t rgb)
     uint8_t r = (rgb >> (8 * 0)) & 0xFF;
     uint8_t g = (rgb >> (8 * 1)) & 0xFF;
     uint8_t b = (rgb >> (8 * 2)) & 0xFF;
-    return (color_t) {.r = r, .g = g, .b = b};
+    uint8_t a = (rgb >> (8 * 3)) & 0xFF;
+    return (color_t) {.r = r, .g = g, .b = b, .a = a};
 }
 
 static void print_color_t(color_t c)
@@ -148,14 +150,22 @@ static void analyse_min_and_max(const char *prompt, Mat *values)
 
 static void normalize_pixels(Mat *values)
 {
+    int count = values->width * values->height;
+    if (count <= 0) return;
+
     float min, max;
-    int val_len = values->width * values->height - 1;
-    min_and_max(values, &min, &max, 0, val_len);
-    for (int i = 0; i < values->width * values->height; ++i)
+    min_and_max(values, &min, &max, 0, count - 1);
+
+    if (max == min) {
+        for (int i = 0; i < count; ++i) values->items[i] = 0.0f;
+        return;
+    }
+
+    for (int i = 0; i < count; ++i)
     {
         values->items[i] = (values->items[i] - min) / (max - min);
     }
-}
+} 
 
 static bool dump_mat(const char *fp, Mat mat)
 {
@@ -462,7 +472,7 @@ int main(int argc, char *argv[])
     }
 
     const char *file_path = argv[1];
-    size_t seams_to_remove = atoi(argv[2]);
+    size_t seams_to_remove = (size_t)atoi(argv[2]);
 
     int _width, _height;
     uint32_t *pixels_ = (uint32_t *) stbi_load(file_path, &_width, &_height, NULL, 4);
@@ -472,8 +482,13 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    Img img = img_alloc(_width, _height);
+    Img img = {0};
     img.pixels = pixels_;
+    img.width = _width;
+    img.height = _height;
+    img.stride = _width;
+
+    if (_width > 0 && seams_to_remove >= (size_t)_width) seams_to_remove = (size_t)_width - 1;
 
     Mat lum = mat_alloc(_width, _height);
     Mat grad = mat_alloc(_width, _height);
