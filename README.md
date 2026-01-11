@@ -35,6 +35,7 @@ Seam Carving is an implementation of content-aware image resizing algorithm that
 3. Compile the program:
    ```sh
    cc nob.c -o nob
+   cc nob.c -o nob
    ./nob
    ```
 4. Run the program:
@@ -43,6 +44,7 @@ Seam Carving is an implementation of content-aware image resizing algorithm that
    ```
 
 ## Acknowledgements
+Seam Carving Paper: [Seam carving for content-aware image resizing](https://dl.acm.org/doi/10.1145/1275808.1276390)
 Seam Carving Paper: [Seam carving for content-aware image resizing](https://dl.acm.org/doi/10.1145/1275808.1276390)
 
 ## Contributing
