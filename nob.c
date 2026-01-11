@@ -27,6 +27,8 @@ void cc(Nob_Cmd *cmd)
     nob_cmd_append(cmd, "-Wall", "-Wextra", "-Wno-unused-function", "-g", "-std=c17");
     intergrate_omp(cmd);
 
+    nob_cmd_append(cmd, "-fsanitize=address,undefined");
+
 #if defined(COMPILE_NATIVE)
     nob_cmd_append(cmd, "-march=native");
 #endif

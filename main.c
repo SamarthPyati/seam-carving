@@ -45,7 +45,7 @@ typedef struct
 #define img_at(img, i, j) ((img).pixels[(img).stride * (i) + (j)])
 #define mat_within(mat, i, j) (0 <= i && i < (mat).width && 0 <= j && j < (mat).height)
 
-#define RED (uint32_t)0xFF0000FF;
+#define RED (uint32_t)0xFF0000FF
 
 static inline Mat mat_alloc(int width, int height)
 {
@@ -256,10 +256,10 @@ static void sobel(Mat lum, Mat grad)
     assert(lum.height == grad.height);
 
     // Convolving the kernel and the image
-    #pragma omp parellel for
+    #pragma omp parallel for
     for (int cy = 0; cy < lum.height; ++cy)
     {
-        #pragma omp parellel for
+        #pragma omp parallel for
         for (int cx = 0; cx < lum.width; ++cx)
         {
             // magnitude of the gradient 
@@ -275,17 +275,17 @@ static void energy(Mat grad, Mat energy)
     assert(grad.height == energy.height);
 
     // Calculate the energy 
-    #pragma omp parellel for 
+    #pragma omp parallel for 
     for (int x = 0; x < grad.width; ++x) 
     {   
         // Copy the first row as it is, as there's no row above to calculate the energy
         mat_at(energy, 0, x) = mat_at(grad, 0, x);
     }
     
-    #pragma omp parellel for 
+    #pragma omp parallel for 
     for (int cy = 1; cy < grad.height; ++cy)
     {
-        #pragma omp parellel for 
+        #pragma omp parallel for 
         for (int cx = 0; cx < grad.width; ++cx)
         {       
             // WORKING: M(i, j) = e(i, j) + min(M(i − 1, j − 1), M(i − 1, j), M(i − 1, j + 1))
@@ -322,23 +322,23 @@ static void energy(Mat grad, Mat energy)
     };  // (/ 256) divide every element by 256
 #endif 
 
-void normalize_filter(float **kernel, size_t dim) {
-    const size_t RGBA_RANGE = 256;
-    #pragma omp parellel for 
-    for (size_t i = 0; i < dim; ++i) {
-        #pragma omp parellel for 
-        for (size_t j = 0; j < dim; ++j) {
-            kernel[i][j] /= RGBA_RANGE;
-        }
-    }
-}
+// void normalize_filter(float **kernel, size_t dim) {
+//     const size_t RGBA_RANGE = 256;
+//     #pragma omp parellel for 
+//     for (size_t i = 0; i < dim; ++i) {
+//         #pragma omp parellel for 
+//         for (size_t j = 0; j < dim; ++j) {
+//             kernel[i][j] /= RGBA_RANGE;
+//         }
+//     }
+// }
 
 static void gaussianBlur(Mat lum, Mat img)
 {   
     
     int kdim = 5;                  // kernel dim in order of ranges of 2k + 1, -(2k + 1)
 
-    normalize_filter(&bk5[0][0], 5);
+    // normalize_filter(&bk5[0][0], 5);
 
     int width = lum.width;
     int height = lum.height;
@@ -355,9 +355,9 @@ static void gaussianBlur(Mat lum, Mat img)
                     int x = cx + kx;
                     int y = cy + ky;
                     // ensure x & y stay in bounds of image dimensions
-                    float l = (0 <= x && x < width && 0 <= y && y < width) ? mat_at(lum, y, x) : 0.0f;
-                    // kx and ky start from -1 so offset by 1
-                    acc += bk5[ky + 1][kx + 1] * l;
+                    float l = (0 <= x && x < width && 0 <= y && y < height) ? mat_at(lum, y, x) : 0.0f;
+                    // kx and ky run from -2..2 for kdim=5 so offset by 2
+                    acc += bk5[ky + 2][kx + 2] * l;
                 }   
             }
             mat_at(img, cy, cx) = acc;
@@ -442,7 +442,7 @@ void markout_sobel_patches(Mat grad, int *seams)
                 int x = cx + dx;
                 int y = cy + dy;
                 if (0 <= x && x < grad.width && 0 <= y && y < grad.height) {
-                    *(uint32_t *)&mat_at(grad, y, x) = NAN;
+                    mat_at(grad, y, x) = NAN;
                 }
             }
         }
@@ -451,16 +451,6 @@ void markout_sobel_patches(Mat grad, int *seams)
 
 int main(int argc, char *argv[])
 {    
-    normalize_filter(bk5, 5);
-
-    for (size_t i = 0; i < 5; ++i) {
-        for (size_t j = 0; j < 5; ++j) {
-            printf("%f ", bk5[i][j]);
-        }
-        printf("\n");
-    }
-
-    return 0;
     // // Testing OMP 
     // uint32_t num_thread = omp_get_num_threads();
     // nob_log(NOB_INFO, "Number of threads %u\n", num_thread);
@@ -471,14 +461,14 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    const char *inp_img_fp = argv[1];
+    const char *file_path = argv[1];
     size_t seams_to_remove = atoi(argv[2]);
 
     int _width, _height;
-    uint32_t *pixels_ = (uint32_t *) stbi_load(inp_img_fp, &_width, &_height, NULL, 4);
+    uint32_t *pixels_ = (uint32_t *) stbi_load(file_path, &_width, &_height, NULL, 4);
     if (!pixels_)  
     {
-        fprintf(stderr, "ERROR: Failed to load image %s\n", inp_img_fp);
+        fprintf(stderr, "ERROR: Failed to load image %s\n", file_path);
         exit(EXIT_FAILURE);
     }
 
@@ -522,10 +512,15 @@ int main(int argc, char *argv[])
         // recompute the sobel only for the marked seam 
         #pragma omp parallel for 
         for (int cy = 0; cy < grad.height; ++cy) {
-            for (int cx = seams[cy]; cx < grad.width && *(uint32_t*)&mat_at(grad, cy, cx) == NAN; ++cx) {
+            int s = seams[cy];
+            /* recompute to the right of seam until a non-NaN value is found */
+            for (int cx = s; cx < grad.width; ++cx) {
+                if (!isnan(mat_at(grad, cy, cx))) break;
                 mat_at(grad, cy, cx) = sobel_at(lum, cy, cx);
             }
-            for (int cx = seams[cy - 1]; cx >= 0 && *(uint32_t*)&mat_at(grad, cy, cx) == NAN; --cx) {
+            /* recompute to the left of seam until a non-NaN value is found */
+            for (int cx = s - 1; cx >= 0; --cx) {
+                if (!isnan(mat_at(grad, cy, cx))) break;
                 mat_at(grad, cy, cx) = sobel_at(lum, cy, cx);
             }
         }
