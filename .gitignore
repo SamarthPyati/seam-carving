@@ -2,6 +2,7 @@
 .vscode
 
 # Compilation & Debug
+temp/
 .DS_Store
 *.dSYM
 *.o

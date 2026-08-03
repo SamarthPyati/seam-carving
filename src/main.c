@@ -301,13 +301,15 @@ static bool dump_img(const char *fp, const Img img)
 
 int seam_carving_main(int argc, char *argv[])
 {
-    if (argc != 3)
+    if (argc != 3 && argc != 4)
     {
-        LOG_USAGE(argv[0], "<image_file_path> <seams_to_remove>");
+        LOG_USAGE(argv[0], "<input_file_path> <n_seams_to_remove> [output_file_path]");
+        return EXIT_FAILURE;
     }
 
     const char *file_path = argv[1];
     size_t seams_to_remove = atoi(argv[2]);
+    const char *output_path = (argc == 4) ? argv[3] : "output.png";
 
     int width = 0;
     int height = 0;
@@ -372,7 +374,7 @@ int seam_carving_main(int argc, char *argv[])
         }
     }
 
-    if (!dump_img("output.png", img))
+    if (!dump_img(output_path, img))
     {
         stbi_image_free(pixels);
         mat_free(&lum);
@@ -393,6 +395,5 @@ int seam_carving_main(int argc, char *argv[])
 
 int main(int argc, char **argv)
 {
-    printf("_OPENMP: %d\n", _OPENMP);
     return seam_carving_main(argc, argv);
 }

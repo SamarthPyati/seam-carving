@@ -46,16 +46,17 @@ Seam carving is a content-aware image resizing technique that removes or inserts
   ```
 4. Run the program:
   ```sh
-  ./nob <image_file_path> <seams_to_remove>
+  ./nob <image_file_path> <seams_to_remove> [output_file_path]
   ```
 
 Example:
 
 ```sh
 ./nob demo-images/tower.jpg 5
+./nob demo-images/tower.jpg 5 output.png
 ```
 
-The output image is written to [output.png](output.png).
+If no output path is supplied, the image is written to [output.png](output.png).
 
 ## Acknowledgements
 
