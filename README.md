@@ -1,51 +1,67 @@
 # Seam Carving
 
-Seam Carving is an implementation of content-aware image resizing algorithm that selectively removes or inserts seam of pixels in an image to change its dimensions while preserving important visual content in the image without any application of extensive machine learning algorithms. 
+Seam carving is a content-aware image resizing technique that removes or inserts low-energy seams while preserving the most important visual regions of an image.
 
 ## Demo
+
 <div align="center">
-   <div style="display: flex; justify-content: center; gap: 20px;">
-      <div>
-         <img src="./demo-images/tower.jpg" height="200" alt="Original Image">
-         <p><b>Original Image</b></p>
-      </div>
-      <div>
-         <img src="./demo-images/tower_cropped.png" height="200" alt="Seam Carved Image">
-         <p><b>Seam Carved Image</b></p>
-      </div>
+ <div style="display: flex; justify-content: center; gap: 20px;">
+   <div>
+     <img src="./demo-images/tower.jpg" height="200" alt="Original image">
+     <p><b>Original image</b></p>
    </div>
+   <div>
+     <img src="./demo-images/tower_cropped.png" height="200" alt="Seam carved image">
+     <p><b>Seam carved image</b></p>
+   </div>
+ </div>
 </div>
 
 ## Features
 
 - Content-aware image resizing
-- Efficient implementation in C
-- Parellel Processing with OpenMP
+- Optimized seam-energy computation in C
+- Clean source layout with dedicated source and include directories
 
-## How to Run
+## Project layout
+
+- [src/main.c](src/main.c): seam carving implementation and CLI entry point
+- [include/utils.h](include/utils.h): shared helper macros
+- [nob.c](nob.c): lightweight build driver for the project
+- [external/](external/): bundled third-party headers for image I/O
+
+## Build and run
 
 1. Clone the repository:
-   ```sh
-   git clone https://github.com/SamarthPyati/seam-carving.git
-   ```
-2. Navigate to the project directory:
-   ```sh
-   cd seam-carving
-   ```
-3. Compile the program:
-   ```sh
-   cc nob.c -o nob
-   cc nob.c -o nob
-   ./nob
-   ```
+  ```sh
+  git clone https://github.com/SamarthPyati/seam-carving.git
+  ```
+2. Change into the project directory:
+  ```sh
+  cd seam-carving
+  ```
+3. Build the executable:
+  ```sh
+  cc nob.c -o nob
+  ```
 4. Run the program:
-   ```sh
-   ./build/main <image_file_path> <seam_to_remove>
-   ```
+  ```sh
+  ./nob <image_file_path> <seams_to_remove>
+  ```
+
+Example:
+
+```sh
+./nob demo-images/tower.jpg 5
+```
+
+The output image is written to [output.png](output.png).
 
 ## Acknowledgements
-Seam Carving Paper: [Seam carving for content-aware image resizing](https://dl.acm.org/doi/10.1145/1275808.1276390)
-Seam Carving Paper: [Seam carving for content-aware image resizing](https://dl.acm.org/doi/10.1145/1275808.1276390)
+
+- Seam carving paper: [Seam Carving for Content-Aware Image Resizing](https://dl.acm.org/doi/10.1145/1275808.1276390)
 
 ## Contributing
-Feel free to fork this repository and submit pull requests. 
+
+Feel free to fork the repository and submit pull requests.
+
