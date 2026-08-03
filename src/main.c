@@ -393,5 +393,6 @@ int seam_carving_main(int argc, char *argv[])
 
 int main(int argc, char **argv)
 {
+    printf("_OPENMP: %d\n", _OPENMP);
     return seam_carving_main(argc, argv);
 }

@@ -17,11 +17,24 @@ static double get_time(void)
     return tp.tv_sec + tp.tv_nsec * 1e-9;
 }
 
+static void incorporate_omp(Cmd *cmd) {
+#if defined(__clang__)
+    cmd_append(cmd, "-Xpreprocessor", "-fopenmp");
+#else 
+    cmd_append(cmd, "-fopenmp");
+#endif
+    cmd_append(cmd, "-I/opt/homebrew/opt/libomp/include");
+    cmd_append(cmd, "-L/opt/homebrew/opt/libomp/lib");
+    cmd_append(cmd, "-lomp");
+}
+
 static void cc(Cmd *cmd)
 {
     cmd_append(cmd, "cc");
     cmd_append(cmd, "-Wall", "-Wextra", "-Wno-unused-function", "-g", "-std=c17");
     cmd_append(cmd, "-fsanitize=address,undefined");
+
+    incorporate_omp(cmd);
 
 #if defined(COMPILE_NATIVE)
     cmd_append(cmd, "-march=native");
@@ -34,7 +47,7 @@ static void cc(Cmd *cmd)
 #endif
 }
 
-static bool build_binary(Nob_Cmd *cmd, const char *source, const char *output)
+static bool build_binary(Cmd *cmd, const char *source, const char *output)
 {
     if (needs_rebuild1(output, source)) {
         cmd->count = 0;
@@ -60,7 +73,7 @@ int main(int argc, char **argv)
 
     Cmd cmd = {0};
 
-    if (!nob_mkdir_if_not_exists("./build/")) return 1;
+    if (!mkdir_if_not_exists("./build/")) return 1;
 
     const char *main_source = "src/main.c";
     const char *main_output = "./build/seam-carving";
@@ -70,7 +83,7 @@ int main(int argc, char **argv)
     cmd_append(&cmd, main_output);
     da_append_many(&cmd, argv, argc);
     double begin = get_time();
-    if (!nob_cmd_run_sync(cmd)) return 1;
+    if (!cmd_run(&cmd)) return 1;
     double end = get_time();
     nob_log(INFO, "Execution time: %lf second(s)", end - begin);
 
