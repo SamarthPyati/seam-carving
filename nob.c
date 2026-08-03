@@ -8,7 +8,7 @@
 // #define COMPILE_FASTER
 #define COMPILE_NATIVE
 
-double get_time(void)
+static double get_time(void)
 {
     struct timespec tp = {0};
     int ret = clock_gettime(CLOCK_MONOTONIC, &tp);
@@ -16,45 +16,38 @@ double get_time(void)
     return tp.tv_sec + tp.tv_nsec * 1e-9;
 }
 
-void intergrate_omp(Nob_Cmd *cmd) {
-    // OpenMP
-    nob_cmd_append(cmd, "-L/opt/homebrew/opt/libomp/lib", "-I/opt/homebrew/opt/libomp/include", "-lomp");    
-}
-
-void cc(Nob_Cmd *cmd)
+static void cc(Nob_Cmd *cmd)
 {
     nob_cmd_append(cmd, "cc");
     nob_cmd_append(cmd, "-Wall", "-Wextra", "-Wno-unused-function", "-g", "-std=c17");
-    intergrate_omp(cmd);
-
     nob_cmd_append(cmd, "-fsanitize=address,undefined");
 
 #if defined(COMPILE_NATIVE)
     nob_cmd_append(cmd, "-march=native");
 #endif
-    
+
 #if !defined(COMPILE_FASTER)
     nob_cmd_append(cmd, "-O3");
-#else 
+#else
     nob_cmd_append(cmd, "-O0");
 #endif
 }
 
-bool build_libs(Nob_Cmd *cmd, const char *implementation, const char *input, const char *output)
+static bool build_binary(Nob_Cmd *cmd, const char *source, const char *output)
 {
-    if (nob_needs_rebuild1(output, input)) {
+    if (nob_needs_rebuild1(output, source)) {
         cmd->count = 0;
         cc(cmd);
-        nob_cmd_append(cmd, implementation);
-        nob_cmd_append(cmd, "-x", "c");
-        nob_cmd_append(cmd, "-c");
+        nob_cmd_append(cmd, "-I./include");
+        nob_cmd_append(cmd, "-I./external");
         nob_cmd_append(cmd, "-o", output);
-        nob_cmd_append(cmd, input);
+        nob_cmd_append(cmd, source);
+        nob_cmd_append(cmd, "-lm");
         return nob_cmd_run_sync(*cmd);
-    } else {
-        nob_log(NOB_INFO, "%s is up to date", output);
-        return true;
     }
+
+    nob_log(NOB_INFO, "%s is up to date", output);
+    return true;
 }
 
 int main(int argc, char **argv)
@@ -62,28 +55,15 @@ int main(int argc, char **argv)
     NOB_GO_REBUILD_URSELF(argc, argv);
 
     const char *program = nob_shift_args(&argc, &argv);
-    (void) program;
+    (void)program;
 
     Nob_Cmd cmd = {0};
 
     if (!nob_mkdir_if_not_exists("./build/")) return 1;
-    if (!build_libs(&cmd, "-DSTB_IMAGE_IMPLEMENTATION", "external/stb_image.h", "./build/stb_image.o")) return 1;
-    if (!build_libs(&cmd, "-DSTB_IMAGE_WRITE_IMPLEMENTATION", "external/stb_image_write.h", "./build/stb_image_write.o")) return 1;
-    if (!build_libs(&cmd, "-DNOB_IMPLEMENTATION", "external/nob.h", "./build/nob.o")) return 1;
 
-    const char *main_input = "main.c";
-    const char *main_output = "./build/main";
-    cmd.count = 0;
-    cc(&cmd);
-    nob_cmd_append(&cmd, "-o", main_output);
-    nob_cmd_append(&cmd, main_input);
-    nob_cmd_append(&cmd, "-I.");
-    nob_cmd_append(&cmd, "-I./external");
-    nob_cmd_append(&cmd, "./build/stb_image.o");
-    nob_cmd_append(&cmd, "./build/stb_image_write.o");
-    nob_cmd_append(&cmd, "./build/nob.o");
-    nob_cmd_append(&cmd, "-lm");
-    if (!nob_cmd_run_sync(cmd)) return 1;
+    const char *main_source = "src/main.c";
+    const char *main_output = "./build/seam-carving";
+    if (!build_binary(&cmd, main_source, main_output)) return 1;
 
     cmd.count = 0;
     nob_cmd_append(&cmd, main_output);
