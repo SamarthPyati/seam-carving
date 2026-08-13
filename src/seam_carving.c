@@ -84,6 +84,9 @@ static float rgb_to_lum(uint32_t rgb)
     return (0.2126f * r + 0.7152f * g + 0.0722f * b);
 }
 
+/* Plain `<` instead of fminf(): fminf() has NaN-propagation semantics that stop
+   GCC/Clang from folding it to a bare minss/vminps unless -ffinite-math-only is
+   on. This form always lowers to a single min instruction and vectorises. */
 static inline float fmin2(float a, float b) { return a < b ? a : b; }
 static inline float fmin3(float a, float b, float c) { return fmin2(fmin2(a, b), c); }
 
@@ -93,6 +96,7 @@ static inline float lum_at(const Img img, int y, int x) {
     return rgb_to_lum(img_at(img, y, x));
 }
 
+// https://en.wikipedia.org/wiki/Sobel_operator#Formulation
 static float sobel_at(const Img img, int cy, int cx) {
     const float p00 = lum_at(img, cy - 1, cx - 1);
     const float p01 = lum_at(img, cy - 1, cx    );
@@ -106,22 +110,6 @@ static float sobel_at(const Img img, int cy, int cx) {
     const float sx = (p00 + 2.0f * p10 + p20) - (p02 + 2.0f * p12 + p22);
     const float sy = (p00 + 2.0f * p01 + p02) - (p20 + 2.0f * p21 + p22);
     return sqrtf(sx * sx + sy * sy);
-}
-
-static void luminance(const Img img, Mat lum)
-{
-    assert(lum.items != NULL);
-    assert(lum.width == img.width);
-    assert(lum.height == img.height);
-
-    SEAM_CARVING_OMP_PARALLEL_FOR
-    for (int y = 0; y < lum.height; ++y)
-    {
-        for (int x = 0; x < lum.width; ++x)
-        {
-            mat_at(lum, y, x) = rgb_to_lum(img_at(img, y, x));
-        }
-    }
 }
 
 static void sobel(const Img img, Mat grad)
@@ -175,16 +163,16 @@ static void energy(const Mat grad, Mat energy)
     }
 }
 
-static void remove_pixel_img(Img img, int r, int c)
+static inline void remove_pixel_img(Img img, int r, int c)
 {
-    uint32_t *pixels_row = &img_at(img, r, 0);
-    memmove(pixels_row + c, pixels_row + c + 1, ((img.width - c - 1) * sizeof(uint32_t)));
+    uint32_t *row = &img_at(img, r, 0);
+    memmove(row + c, row + c + 1, (size_t)(img.width - c - 1) * sizeof(uint32_t));
 }
 
-static void remove_pixel_mat(Mat mat, int r, int c)
+static inline void remove_pixel_mat(Mat mat, int r, int c)
 {
-    float *pixels_row = &mat_at(mat, r, 0);
-    memmove(pixels_row + c, pixels_row + c + 1, ((mat.width - c - 1) * sizeof(float)));
+    float *row = &mat_at(mat, r, 0);
+    memmove(row + c, row + c + 1, (size_t)(mat.width - c - 1) * sizeof(float));
 }
 
 static void compute_seam(const Mat egy, int *seams)
@@ -316,13 +304,11 @@ int seam_carving_main(int argc, char *argv[])
 
     CLAMP_ASSIGN(seams_to_remove, 0UL, width - 1UL);
 
-    Mat lum = mat_alloc(width, height);
     Mat grad = mat_alloc(width, height);
     Mat egy = mat_alloc(width, height);
     int *seams = (int *)malloc(sizeof(*seams) * height);
     assert(seams != NULL);
 
-    luminance(img, lum);
     sobel(img, grad);
     energy(grad, egy);
 
@@ -335,13 +321,11 @@ int seam_carving_main(int argc, char *argv[])
         for (int cy = 0; cy < grad.height; ++cy)
         {
             int cx = seams[cy];
-            remove_pixel_mat(lum, cy, cx);
             remove_pixel_mat(grad, cy, cx);
             remove_pixel_img(img, cy, cx);
         }
 
         img.width -= 1;
-        lum.width -= 1;
         grad.width -= 1;
         egy.width -= 1;
 
@@ -365,7 +349,6 @@ int seam_carving_main(int argc, char *argv[])
     if (!dump_img(output_path, img))
     {
         stbi_image_free(pixels);
-        mat_free(&lum);
         mat_free(&egy);
         mat_free(&grad);
         free(seams);
@@ -373,7 +356,6 @@ int seam_carving_main(int argc, char *argv[])
     }
 
     stbi_image_free(pixels);
-    mat_free(&lum);
     mat_free(&egy);
     mat_free(&grad);
     free(seams);

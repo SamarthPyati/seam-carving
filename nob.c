@@ -75,7 +75,7 @@ int main(int argc, char **argv)
 
     if (!mkdir_if_not_exists("./build/")) return 1;
 
-    const char *main_source = "src/main.c";
+    const char *main_source = "src/seam_carving.c";
     const char *main_output = "./build/seam-carving";
     if (!build_binary(&cmd, main_source, main_output)) return 1;
 
