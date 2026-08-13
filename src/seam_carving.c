@@ -84,6 +84,30 @@ static float rgb_to_lum(uint32_t rgb)
     return (0.2126f * r + 0.7152f * g + 0.0722f * b);
 }
 
+static inline float fmin2(float a, float b) { return a < b ? a : b; }
+static inline float fmin3(float a, float b, float c) { return fmin2(fmin2(a, b), c); }
+
+static inline float lum_at(const Img img, int y, int x) {
+    // Compute luminance at a image pixel (y, x)
+    if (x < 0 || x >= img.width || y < 0 || y >= img.height) return 0.0f;
+    return rgb_to_lum(img_at(img, y, x));
+}
+
+static float sobel_at(const Img img, int cy, int cx) {
+    const float p00 = lum_at(img, cy - 1, cx - 1);
+    const float p01 = lum_at(img, cy - 1, cx    );
+    const float p02 = lum_at(img, cy - 1, cx + 1);
+    const float p10 = lum_at(img, cy,     cx - 1);
+    const float p12 = lum_at(img, cy,     cx + 1);
+    const float p20 = lum_at(img, cy + 1, cx - 1);
+    const float p21 = lum_at(img, cy + 1, cx    );
+    const float p22 = lum_at(img, cy + 1, cx + 1);
+
+    const float sx = (p00 + 2.0f * p10 + p20) - (p02 + 2.0f * p12 + p22);
+    const float sy = (p00 + 2.0f * p01 + p02) - (p20 + 2.0f * p21 + p22);
+    return sqrtf(sx * sx + sy * sy);
+}
+
 static void luminance(const Img img, Mat lum)
 {
     assert(lum.items != NULL);
@@ -100,48 +124,18 @@ static void luminance(const Img img, Mat lum)
     }
 }
 
-static const float gx[3][3] = {
-    {1.0f, 0.0f, -1.0f},
-    {2.0f, 0.0f, -2.0f},
-    {1.0f, 0.0f, -1.0f},
-};
-
-static const float gy[3][3] = {
-    {1.0f, 2.0f, 1.0f},
-    {0.0f, 0.0f, 0.0f},
-    {-1.0f, -2.0f, -1.0f},
-};
-
-static float sobel_at(const Mat lum, int cy, int cx)
+static void sobel(const Img img, Mat grad)
 {
-    float sx = 0.0f;
-    float sy = 0.0f;
-    for (int ky = -1; ky <= 1; ++ky)
-    {
-        for (int kx = -1; kx <= 1; ++kx)
-        {
-            int x = cx + kx;
-            int y = cy + ky;
-            float l = (0 <= x && x < lum.width && 0 <= y && y < lum.height) ? mat_at(lum, y, x) : 0.0f;
-            sx += gx[ky + 1][kx + 1] * l;
-            sy += gy[ky + 1][kx + 1] * l;
-        }
-    }
-    return sqrtf(sx * sx + sy * sy);
-}
-
-static void sobel(const Mat lum, Mat grad)
-{
-    assert(lum.items != NULL);
-    assert(lum.width == grad.width);
-    assert(lum.height == grad.height);
+    assert(img.pixels != NULL);
+    assert(img.width == grad.width);
+    assert(img.height == grad.height);
 
     SEAM_CARVING_OMP_PARALLEL_FOR
-    for (int cy = 0; cy < lum.height; ++cy)
+    for (int cy = 0; cy < img.height; ++cy)
     {
-        for (int cx = 0; cx < lum.width; ++cx)
+        for (int cx = 0; cx < img.width; ++cx)
         {
-            mat_at(grad, cy, cx) = sobel_at(lum, cy, cx);
+            mat_at(grad, cy, cx) = sobel_at(img, cy, cx);
         }
     }
 }
@@ -154,36 +148,30 @@ static void energy(const Mat grad, Mat energy)
 
     const int width = grad.width;
     const int height = grad.height;
-    const int stride = grad.stride;
 
-    for (int x = 0; x < width; ++x)
-    {
-        mat_at(energy, 0, x) = mat_at(grad, 0, x);
-    }
+    if (width <= 0 || height <= 0) return;
+    memcpy(&mat_at(energy, 0, 0), &mat_at(grad, 0, 0), sizeof(float) * (size_t)width);
 
     for (int y = 1; y < height; ++y)
     {
-        float *prev_row = &energy.items[(y - 1) * stride];
-        float *cur_row = &energy.items[y * stride];
-        const float *grad_row = &grad.items[y * stride];
+        const float *restrict g = &mat_at(grad, y, 0);
+        const float *restrict p = &mat_at(energy, y - 1, 0);
+        float *restrict c = &mat_at(energy, y, 0);
 
         if (width == 1)
         {
-            cur_row[0] = grad_row[0] + prev_row[0];
+            c[0] = g[0] + p[0];
             continue;
         }
 
-        cur_row[0] = grad_row[0] + ((prev_row[0] < prev_row[1]) ? prev_row[0] : prev_row[1]);
+        c[0] = g[0] + fmin2(p[0], p[1]);
 
         for (int x = 1; x < width - 1; ++x)
         {
-            float best_prev = prev_row[x - 1];
-            if (prev_row[x] < best_prev) best_prev = prev_row[x];
-            if (prev_row[x + 1] < best_prev) best_prev = prev_row[x + 1];
-            cur_row[x] = grad_row[x] + best_prev;
+            c[x] = g[x] + fmin3(p[x - 1], p[x], p[x + 1]);
         }
 
-        cur_row[width - 1] = grad_row[width - 1] + ((prev_row[width - 2] < prev_row[width - 1]) ? prev_row[width - 2] : prev_row[width - 1]);
+        c[width - 1] = g[width - 1] + fmin2(p[width - 2], p[width - 1]);
     }
 }
 
@@ -335,7 +323,7 @@ int seam_carving_main(int argc, char *argv[])
     assert(seams != NULL);
 
     luminance(img, lum);
-    sobel(lum, grad);
+    sobel(img, grad);
     energy(grad, egy);
 
     for (size_t i = 0; i < seams_to_remove; ++i)
@@ -364,12 +352,12 @@ int seam_carving_main(int argc, char *argv[])
             for (int cx = s; cx < grad.width; ++cx)
             {
                 if (!isnan(mat_at(grad, cy, cx))) break;
-                mat_at(grad, cy, cx) = sobel_at(lum, cy, cx);
+                mat_at(grad, cy, cx) = sobel_at(img, cy, cx);
             }
             for (int cx = s - 1; cx >= 0; --cx)
             {
                 if (!isnan(mat_at(grad, cy, cx))) break;
-                mat_at(grad, cy, cx) = sobel_at(lum, cy, cx);
+                mat_at(grad, cy, cx) = sobel_at(img, cy, cx);
             }
         }
     }

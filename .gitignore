@@ -3,6 +3,7 @@
 
 # Compilation & Debug
 temp/
+temp.*
 .DS_Store
 *.dSYM
 *.o
